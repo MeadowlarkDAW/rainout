@@ -7,4 +7,4 @@ IO handling for RustyDAW projects
 - [ ] ALSA MIDI
 - [ ] ASIO
 - [ ] Generic Windows IO
-- [ ] (Whatever the sound engine on MacOS is called)
+- [ ] CoreAudio
