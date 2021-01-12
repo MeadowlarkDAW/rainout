@@ -1,0 +1,16 @@
+[package]
+name = "rusty-daw-io"
+version = "0.1.0"
+authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+edition = "2018"
+license = "GPL-3.0"
+keywords = ["audio", "daw"]
+categories = ["multimedia::audio"]
+description = "IO handling for RustyDAW projects (placeholder)"
+documentation = "https://docs.rs/rusty-daw-io"
+repository = "https://github.com/RustyDAW/rusty-daw-io"
+readme = "README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
