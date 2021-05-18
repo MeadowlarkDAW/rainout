@@ -1,35 +1,44 @@
-use super::AudioServer;
-
-pub mod jack;
+use super::{AudioServerConfig, ProcessInfo, SpawnRtThreadError};
 
 pub struct DeviceConfigurator {
-    servers: [Box<dyn AudioServer>; 1],
+    server_configs: [AudioServerConfig; 1],
+    client_name: Option<String>,
 }
 
 impl DeviceConfigurator {
-    pub fn new() -> Self {
-        println!("Searching for hardware devices...");
+    pub fn new(client_name: Option<String>) -> Self {
 
-        let new_self = Self {
-            servers: [
-                Box::new(jack::JackAudioServer::new()),
-            ]
+        let mut new_self = Self {
+            server_configs: [
+                AudioServerConfig::new(String::from("Jack"), None), // TODO: Get Jack version?
+            ],
+            client_name,
         };
 
-        println!("Finished searching for hardware devices");
+        new_self.refresh_audio_servers();
 
         new_self
     }
 
-    pub fn refresh(&mut self) {
-        println!("Searching for hardware devices...");
+    pub fn refresh_audio_servers(&mut self) {
+        println!("Searching for audio servers...");
 
-        self.servers[0] = Box::new(jack::JackAudioServer::new());
 
-        println!("Finished searching for hardware devices");
+        println!("Finished searching for audio servers");
     }
 
-    pub fn available_servers(&mut self) -> &mut [Box<dyn AudioServer>] {
-        &mut self.servers[..]
+    pub fn server_configs(&self) -> &[AudioServerConfig] {
+        &self.server_configs
+    }
+    pub fn server_configs_mut(&mut self) -> &mut [AudioServerConfig] {
+        &mut self.server_configs
+    }
+
+    pub fn spawn_rt_thread<C>(&mut self, rt_callback: C) -> Result<(), SpawnRtThreadError>
+    where
+        C: 'static + FnMut(&ProcessInfo)
+    {
+
+        Ok(())
     }
 }

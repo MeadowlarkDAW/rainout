@@ -1,5 +1,6 @@
 #[cfg(target_os = "linux")]
 pub mod linux;
+
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
@@ -14,19 +15,22 @@ pub enum BlockSizeConfigs {
 
 #[derive(Debug, Clone)]
 pub struct AudioDeviceAvailableConfigs {
-    sample_rates: Vec<u32>,
+    pub sample_rates: Vec<u32>,
 
-    min_output_channels: u16,
-    max_output_channels: u16,
+    pub min_output_channels: u16,
+    pub max_output_channels: u16,
 
-    min_input_channels: u16,
-    max_input_channels: u16,
+    pub min_input_channels: u16,
+    pub max_input_channels: u16,
 
-    block_size: BlockSizeConfigs,
+    pub block_size: BlockSizeConfigs,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct AudioDeviceConfig {
+    pub(crate) name: String,
+    pub(crate) selected: bool,
+
     available_configs: AudioDeviceAvailableConfigs,
 
     /// The sample rate to use. Set this to `None` to use the default settings.
@@ -43,14 +47,27 @@ pub struct AudioDeviceConfig {
 }
 
 impl AudioDeviceConfig {
-    pub(crate) fn new(available_configs: AudioDeviceAvailableConfigs) -> Self {
+    pub(crate) fn new(name: String, available_configs: AudioDeviceAvailableConfigs) -> Self {
         Self {
+            name,
+            selected: false,
+
             available_configs,
+
             sample_rate: None,
             output_channels: None,
             input_channels: None,
             block_size: None,
         }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The configurations that are available in this device
+    pub fn available_configs(&self) -> &AudioDeviceAvailableConfigs {
+        &self.available_configs
     }
 
     /// Set the sample rate to use.
@@ -61,7 +78,7 @@ impl AudioDeviceConfig {
     /// nothing will be changed.
     pub fn set_sample_rate(&mut self, sample_rate: Option<u32>) {
         if let Some(sample_rate) = sample_rate {
-            if !self.available_configs.sample_rates.contains(sample_rate) {
+            if !self.available_configs.sample_rates.contains(&sample_rate) {
                 return;
             }
         }
@@ -124,11 +141,6 @@ impl AudioDeviceConfig {
         self.block_size = block_size;
     }
 
-    /// Returns the available configurations for this device
-    pub fn available_configs(&self) -> &AudioDeviceAvailableConfigs {
-        &self.available_configs
-    }
-
     /// The sample rate to use. This will return `None` if using the default settings.
     pub fn sample_rate(&self) -> Option<u32> {
         self.sample_rate
@@ -149,12 +161,19 @@ impl AudioDeviceConfig {
         self.block_size
     }
 
+    pub fn set_selected(&mut self, selected: bool) {
+        self.selected = selected;
+    }
+    pub fn selected(&self) -> bool {
+        self.selected
+    }
+
     pub(crate) fn update_available_configs(&mut self, available_configs: AudioDeviceAvailableConfigs) {
         self.available_configs = available_configs;
 
         // Make sure that the existing config is still valid
         if let Some(sample_rate) = self.sample_rate {
-            if !self.available_configs.sample_rates.contains(sample_rate) {
+            if !self.available_configs.sample_rates.contains(&sample_rate) {
                 self.sample_rate = None;
             }
         }
@@ -183,50 +202,6 @@ impl AudioDeviceConfig {
     }
 }
 
-pub struct AudioDevice {
-    name: String,
-    config: AudioDeviceConfig,
-    selected: bool,
-}
-
-impl AudioDevice {
-    pub(crate) fn new(name: String, available_configs: AudioDeviceAvailableConfigs) -> Self {
-        Self {
-            name,
-            config: AudioDeviceConfig::new(available_configs),
-            selected: false,
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn available_configs(&self) -> &AudioDeviceAvailableConfigs {
-        self.config.available_configs()
-    }
-
-    pub fn config(&self) -> &AudioDeviceConfig {
-        &self.config
-    }
-
-    pub fn config_mut(&mut self) -> &mut AudioDeviceConfig {
-        &mut self.config
-    }
-
-    pub fn set_selected(&mut self, selected: bool) {
-        self.selected = selected;
-    }
-
-    pub fn selected(&self) -> bool {
-        self.selected
-    }
-
-    pub(crate) fn update_available_configs(&mut self, available_configs: AudioDeviceAvailableConfigs) {
-        self.config.update_available_configs(available_configs);
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct MidiDeviceAvailableConfigs {
     // TODO
@@ -236,13 +211,97 @@ pub struct MidiDevice {
     // TODO
 }
 
-pub trait AudioServer {
-    fn name(&self) -> &'static str;
+#[derive(Debug, Clone)]
+pub struct AudioServerConfig {
+    pub(crate) name: String,
+    pub(crate) version: Option<String>,
+    pub(crate) devices: Vec<AudioDeviceConfig>,
+    pub(crate) active: bool,
+    pub(crate) selected: bool,
+}
 
-    fn version(&self) -> Option<&str>;
+impl AudioServerConfig {
+    pub(crate) fn new(name: String, version: Option<String>) -> Self {
+        Self {
+            name,
+            version,
+            devices: Vec::new(),
+            active: false,
+            selected: false,
+        }
+    }
 
-    fn audio_devices(&mut self) -> &mut [AudioDevice];
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn version(&self) -> &Option<String> {
+        &self.version
+    }
 
-    fn set_selected(&mut self, selected: bool);
-    fn selected(&self) -> bool;
+    pub fn audio_devices(&self) -> &[AudioDeviceConfig] {
+        &self.devices
+    }
+    pub fn audio_devices_mut(&mut self) -> &mut [AudioDeviceConfig] {
+        &mut self.devices
+    }
+
+    pub fn active(&self) -> bool {
+        self.active
+    }
+
+    pub fn set_selected(&mut self, selected: bool) {
+        self.selected = selected;
+    }
+    pub fn selected(&self) -> bool {
+        self.selected
+    }
+}
+
+pub struct ProcessInfo<'a> {
+    pub audio_inputs: &'a [&'a [f32]],
+    pub audio_outputs: &'a mut [&'a mut[f32]],
+
+    pub audio_in_channels: u16,
+    pub audio_out_channels: u16,
+    pub audio_frames: usize,
+
+    pub sample_rate: u32,
+
+    // TODO: MIDI IO
+}
+
+impl<'a> std::fmt::Debug for ProcessInfo<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProcessInfo")
+            .field("audio_in_channels", &self.audio_in_channels)
+            .field("audio_out_channels", &self.audio_out_channels)
+            .field("audio_frames", &self.audio_frames)
+            .field("sample_rate", &self.sample_rate)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+pub enum SpawnRtThreadError {
+    NoAudioServerSelected,
+    NoAudioDeviceSelected(String),
+    PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
+}
+
+impl std::error::Error for SpawnRtThreadError {}
+
+impl std::fmt::Display for SpawnRtThreadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpawnRtThreadError::NoAudioServerSelected => {
+                write!(f, "Error spawning rt thread: No audio server was selected.")
+            }
+            SpawnRtThreadError::NoAudioDeviceSelected(server) => {
+                write!(f, "Error spawning rt thread: No audio device was selected for server {:?}.", server)
+            }
+            SpawnRtThreadError::PlatformSpecific(e) => {
+                write!(f, "Error spawning rt thread: Platform error: {:?}", e)
+            }
+        }
+    }
 }
