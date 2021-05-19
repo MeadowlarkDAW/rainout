@@ -1,29 +1,37 @@
-use super::{AudioServerConfig, ProcessInfo, SpawnRtThreadError};
+use super::{AudioServerConfig, RtProcessHandler, SpawnRtThreadError, StreamError};
 
 mod jack_backend;
 
-pub struct DeviceConfigurator<C>
+pub struct StreamHandle<P: RtProcessHandler, E>
 where
-    C: 'static + Send + FnMut(ProcessInfo),
+    E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    server_configs: [AudioServerConfig; 1],
-    client_name: Option<String>,
-
-    jack_server_handle: Option<jack_backend::JackRtThreadHandle<C>>,
+    device_configurator: DeviceConfigurator,
+    _jack_server_handle: Option<jack_backend::JackRtThreadHandle<P, E>>,
 }
 
-impl<C> DeviceConfigurator<C>
+impl<P: RtProcessHandler, E> StreamHandle<P, E>
 where
-    C: 'static + Send + FnMut(ProcessInfo),
+    E: 'static + Send + Sync + FnOnce(StreamError),
 {
+    pub fn end_stream(self) -> DeviceConfigurator {
+        self.device_configurator
+        // Drop handle here. This should automatically close all streams.
+    }
+}
+
+pub struct DeviceConfigurator {
+    server_configs: [AudioServerConfig; 1],
+    client_name: Option<String>,
+}
+
+impl DeviceConfigurator {
     pub fn new(client_name: Option<String>) -> Self {
         let mut new_self = Self {
             server_configs: [
                 AudioServerConfig::new(String::from("Jack"), None), // TODO: Get Jack version?
             ],
             client_name,
-
-            jack_server_handle: None,
         };
 
         new_self.refresh_audio_servers();
@@ -47,24 +55,40 @@ where
         &mut self.server_configs
     }
 
-    pub fn spawn_rt_thread(&mut self, rt_callback: C) -> Result<(), SpawnRtThreadError> {
+    pub fn spawn_rt_thread<P: RtProcessHandler, E>(
+        self,
+        rt_process_handler: P,
+        error_callback: E,
+    ) -> Result<StreamHandle<P, E>, (Self, SpawnRtThreadError)>
+    where
+        E: 'static + Send + Sync + FnOnce(StreamError),
+    {
         // First server is Jack
         {
             let jack_server_config = &self.server_configs[0];
 
             if jack_server_config.selected() {
-                let jack_server_handle = jack_backend::spawn_rt_thread(
-                    rt_callback,
+                let jack_server_handle = match jack_backend::spawn_rt_thread(
+                    rt_process_handler,
+                    error_callback,
                     jack_server_config,
                     self.client_name.clone(),
-                )?;
+                ) {
+                    Ok(j) => j,
+                    Err(e) => {
+                        return Err((self, e));
+                    }
+                };
+
+                return Ok(StreamHandle {
+                    _jack_server_handle: Some(jack_server_handle),
+                    device_configurator: self,
+                });
             } else {
                 // TODO: Don't return error when more servers are implemented.
 
-                return Err(SpawnRtThreadError::NoAudioServerSelected);
+                return Err((self, SpawnRtThreadError::NoAudioServerSelected));
             }
         }
-
-        Ok(())
     }
 }

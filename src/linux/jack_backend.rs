@@ -1,6 +1,6 @@
 use crate::{
     AudioDeviceAvailableConfigs, AudioDeviceConfig, AudioServerConfig, BlockSizeConfigs,
-    ProcessInfo, SpawnRtThreadError,
+    ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError,
 };
 
 static MAX_JACK_CHANNELS: u16 = 64;
@@ -58,94 +58,112 @@ pub fn refresh_audio_server(server: &mut AudioServerConfig) {
     }
 }
 
-pub struct JackRtThreadHandle<C>
+pub struct JackRtThreadHandle<P: RtProcessHandler, E>
 where
-    C: 'static + Send + FnMut(ProcessInfo),
+    E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    async_client: jack::AsyncClient<JackNotificationHandler, JackProcessHandler<C>>,
-
-    // Port names are stored in order to connect them to other ports in jack automatically
-    audio_in_port_names: Vec<String>,
-    audio_out_port_names: Vec<String>,
+    _async_client: jack::AsyncClient<JackNotificationHandler<E>, JackProcessHandler<P>>,
 }
 
-pub fn spawn_rt_thread<C>(
-    rt_callback: C,
+pub fn spawn_rt_thread<P: RtProcessHandler, E>(
+    rt_process_handler: P,
+    error_callback: E,
     audio_server_config: &AudioServerConfig,
     client_name: Option<String>,
-) -> Result<JackRtThreadHandle<C>, SpawnRtThreadError>
+) -> Result<JackRtThreadHandle<P, E>, SpawnRtThreadError>
 where
-    C: 'static + Send + FnMut(ProcessInfo),
+    E: 'static + Send + Sync + FnOnce(StreamError),
 {
     if let Some(audio_device_config) = audio_server_config.devices.first() {
-        if audio_device_config.selected {
-            let (client, _status) = jack::Client::new(
-                client_name
-                    .as_ref()
-                    .unwrap_or(&String::from("rusty-daw-io-jack-client"))
-                    .as_str(),
-                jack::ClientOptions::NO_START_SERVER,
-            )?;
+        // Only one jack device is ever needed, so if the server is selected, treat it like
+        // the only audio device is also selected.
 
-            let audio_out_channels = audio_device_config.output_channels.unwrap_or(2);
-            let audio_in_channels = audio_device_config.input_channels.unwrap_or(2);
+        let client_name = client_name.unwrap_or(String::from("rusty-daw-io"));
 
-            let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
-            let mut audio_in_port_names = Vec::<String>::new();
-            let mut audio_inputs = Vec::<&[f32]>::new();
-            for i in 0..audio_in_channels {
-                let name = format!("audio_in_{}", i);
-                audio_in_ports.push(client.register_port(&name, jack::AudioIn::default())?);
-                audio_in_port_names.push(name);
-                audio_inputs.push(&[]);
-            }
+        let (client, _status) =
+            jack::Client::new(&client_name, jack::ClientOptions::NO_START_SERVER)?;
 
-            let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
-            let mut audio_out_port_names = Vec::<String>::new();
-            let mut audio_outputs = Vec::<&mut [f32]>::new();
-            for i in 0..audio_out_channels {
-                let name = format!("audio_out_{}", i);
-                audio_out_ports.push(client.register_port(&name, jack::AudioOut::default())?);
-                audio_out_port_names.push(name);
-                audio_outputs.push(&mut []);
-            }
+        let audio_out_channels = audio_device_config.output_channels.unwrap_or(2);
+        let audio_in_channels = audio_device_config.input_channels.unwrap_or(2);
 
-            let sample_rate = client.sample_rate();
-            let max_block_size = client.buffer_size();
-
-            let process = JackProcessHandler::new(
-                rt_callback,
-                audio_in_ports,
-                audio_out_ports,
-                sample_rate as u32,
-                max_block_size,
-            );
-
-            // Activate the client, which starts the processing.
-            let async_client = client.activate_async(JackNotificationHandler, process)?;
-
-            Ok(JackRtThreadHandle {
-                async_client,
-                audio_in_port_names,
-                audio_out_port_names,
-            })
-        } else {
-            Err(SpawnRtThreadError::NoAudioDeviceSelected(String::from(
-                audio_server_config.name(),
-            )))
+        let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
+        let mut audio_in_port_names = Vec::<String>::new();
+        for i in 0..audio_in_channels {
+            let name = format!("audio_in_{}", i + 1);
+            let port = client.register_port(&name, jack::AudioIn::default())?;
+            audio_in_port_names.push(port.name()?);
+            audio_in_ports.push(port);
         }
+
+        let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
+        let mut audio_out_port_names = Vec::<String>::new();
+        for i in 0..audio_out_channels {
+            let name = format!("audio_out_{}", i + 1);
+            let port = client.register_port(&name, jack::AudioOut::default())?;
+            audio_out_port_names.push(port.name()?);
+            audio_out_ports.push(port);
+        }
+
+        let sample_rate = client.sample_rate();
+        let max_block_size = client.buffer_size();
+
+        let process = JackProcessHandler::new(
+            rt_process_handler,
+            audio_in_ports,
+            audio_out_ports,
+            sample_rate as u32,
+            max_block_size,
+        );
+
+        // Activate the client, which starts the processing.
+        let async_client = client.activate_async(
+            JackNotificationHandler {
+                error_callback: Some(error_callback),
+            },
+            process,
+        )?;
+
+        // Try to automatically connect to system inputs/outputs.
+
+        // Find system audio inputs
+        let system_in_ports: Vec<String> = async_client.as_client().ports(
+            None,
+            Some("32 bit float mono audio"),
+            jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
+        );
+        println!("physical in ports: {:?}", system_in_ports);
+        // Find system audio outputs
+        let system_out_ports: Vec<String> = async_client.as_client().ports(
+            None,
+            Some("32 bit float mono audio"),
+            jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
+        );
+        println!("physical out ports: {:?}", system_out_ports);
+
+        for (system_in_port, in_port) in system_in_ports.iter().zip(audio_in_port_names.iter()) {
+            async_client
+                .as_client()
+                .connect_ports_by_name(system_in_port, in_port)?;
+        }
+        for (system_out_port, out_port) in system_out_ports.iter().zip(audio_out_port_names.iter())
+        {
+            async_client
+                .as_client()
+                .connect_ports_by_name(out_port, system_out_port)?;
+        }
+
+        Ok(JackRtThreadHandle {
+            _async_client: async_client,
+        })
     } else {
-        Err(SpawnRtThreadError::NoAudioDeviceSelected(String::from(
+        Err(SpawnRtThreadError::AudioServerUnavailable(String::from(
             audio_server_config.name(),
         )))
     }
 }
 
-struct JackProcessHandler<C>
-where
-    C: 'static + Send + FnMut(ProcessInfo),
-{
-    callback: C,
+struct JackProcessHandler<P: RtProcessHandler> {
+    rt_process_handler: P,
 
     audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
     audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
@@ -156,12 +174,9 @@ where
     sample_rate: u32,
 }
 
-impl<C> JackProcessHandler<C>
-where
-    C: 'static + Send + FnMut(ProcessInfo),
-{
+impl<P: RtProcessHandler> JackProcessHandler<P> {
     fn new(
-        callback: C,
+        rt_process_handler: P,
         audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
         audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
         sample_rate: u32,
@@ -178,7 +193,7 @@ where
         }
 
         Self {
-            callback,
+            rt_process_handler,
             audio_in_ports,
             audio_out_ports,
             audio_in_buffers,
@@ -188,10 +203,7 @@ where
     }
 }
 
-impl<C> jack::ProcessHandler for JackProcessHandler<C>
-where
-    C: 'static + Send + FnMut(ProcessInfo),
-{
+impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let mut audio_frames = 0;
         for (buffer, port) in self
@@ -228,7 +240,7 @@ where
         let audio_in_channels = self.audio_in_buffers.len() as u16;
         let audio_out_channels = self.audio_out_buffers.len() as u16;
 
-        (self.callback)(ProcessInfo {
+        self.rt_process_handler.process(ProcessInfo {
             audio_inputs: &self.audio_in_buffers,
             audio_outputs: &mut self.audio_out_buffers,
 
@@ -257,18 +269,30 @@ where
     }
 }
 
-struct JackNotificationHandler;
+struct JackNotificationHandler<E>
+where
+    E: 'static + Send + Sync + FnOnce(StreamError),
+{
+    error_callback: Option<E>,
+}
 
-impl jack::NotificationHandler for JackNotificationHandler {
+impl<E> jack::NotificationHandler for JackNotificationHandler<E>
+where
+    E: 'static + Send + Sync + FnOnce(StreamError),
+{
     fn thread_init(&self, _: &jack::Client) {
         println!("JACK: thread init");
     }
 
     fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
-        println!(
+        let msg = format!(
             "JACK: shutdown with status {:?} because \"{}\"",
             status, reason
         );
+
+        if let Some(error_callback) = self.error_callback.take() {
+            (error_callback)(StreamError::AudioServerDisconnected(msg))
+        }
     }
 
     fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
