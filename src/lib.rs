@@ -10,7 +10,7 @@ pub enum BlockSizeConfigs {
         min_block_size: u32,
         max_block_size: u32,
     },
-    UnknownSize
+    UnknownSize,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,9 @@ impl AudioDeviceConfig {
     /// nothing will be changed.
     pub fn set_output_channels(&mut self, output_channels: Option<u16>) {
         if let Some(output_channels) = output_channels {
-            if output_channels < self.available_configs.min_output_channels || output_channels > self.available_configs.max_output_channels {
+            if output_channels < self.available_configs.min_output_channels
+                || output_channels > self.available_configs.max_output_channels
+            {
                 return;
             }
         }
@@ -110,7 +112,9 @@ impl AudioDeviceConfig {
     /// nothing will be changed.
     pub fn set_input_channels(&mut self, input_channels: Option<u16>) {
         if let Some(input_channels) = input_channels {
-            if input_channels < self.available_configs.min_input_channels || input_channels > self.available_configs.max_input_channels {
+            if input_channels < self.available_configs.min_input_channels
+                || input_channels > self.available_configs.max_input_channels
+            {
                 return;
             }
         }
@@ -127,7 +131,10 @@ impl AudioDeviceConfig {
     pub fn set_block_size(&mut self, block_size: Option<u32>) {
         if let Some(block_size) = block_size {
             match self.available_configs.block_size {
-                BlockSizeConfigs::ConstantSize { min_block_size, max_block_size } => {
+                BlockSizeConfigs::ConstantSize {
+                    min_block_size,
+                    max_block_size,
+                } => {
                     if block_size < min_block_size || block_size > max_block_size {
                         return;
                     }
@@ -168,7 +175,10 @@ impl AudioDeviceConfig {
         self.selected
     }
 
-    pub(crate) fn update_available_configs(&mut self, available_configs: AudioDeviceAvailableConfigs) {
+    pub(crate) fn update_available_configs(
+        &mut self,
+        available_configs: AudioDeviceAvailableConfigs,
+    ) {
         self.available_configs = available_configs;
 
         // Make sure that the existing config is still valid
@@ -178,18 +188,25 @@ impl AudioDeviceConfig {
             }
         }
         if let Some(output_channels) = self.output_channels {
-            if output_channels < self.available_configs.min_output_channels || output_channels > self.available_configs.max_output_channels {
+            if output_channels < self.available_configs.min_output_channels
+                || output_channels > self.available_configs.max_output_channels
+            {
                 self.output_channels = None;
             }
         }
         if let Some(input_channels) = self.input_channels {
-            if input_channels < self.available_configs.min_input_channels || input_channels > self.available_configs.max_input_channels {
+            if input_channels < self.available_configs.min_input_channels
+                || input_channels > self.available_configs.max_input_channels
+            {
                 self.input_channels = None;
             }
         }
         if let Some(block_size) = self.block_size {
             match self.available_configs.block_size {
-                BlockSizeConfigs::ConstantSize { min_block_size, max_block_size } => {
+                BlockSizeConfigs::ConstantSize {
+                    min_block_size,
+                    max_block_size,
+                } => {
                     if block_size < min_block_size || block_size > max_block_size {
                         self.block_size = None;
                     }
@@ -258,15 +275,14 @@ impl AudioServerConfig {
 }
 
 pub struct ProcessInfo<'a> {
-    pub audio_inputs: &'a [&'a [f32]],
-    pub audio_outputs: &'a mut [&'a mut[f32]],
+    pub audio_inputs: &'a [Vec<f32>],
+    pub audio_outputs: &'a mut [Vec<f32>],
 
     pub audio_in_channels: u16,
     pub audio_out_channels: u16,
     pub audio_frames: usize,
 
     pub sample_rate: u32,
-
     // TODO: MIDI IO
 }
 
@@ -297,7 +313,11 @@ impl std::fmt::Display for SpawnRtThreadError {
                 write!(f, "Error spawning rt thread: No audio server was selected.")
             }
             SpawnRtThreadError::NoAudioDeviceSelected(server) => {
-                write!(f, "Error spawning rt thread: No audio device was selected for server {:?}.", server)
+                write!(
+                    f,
+                    "Error spawning rt thread: No audio device was selected for server {:?}.",
+                    server
+                )
             }
             SpawnRtThreadError::PlatformSpecific(e) => {
                 write!(f, "Error spawning rt thread: Platform error: {:?}", e)
