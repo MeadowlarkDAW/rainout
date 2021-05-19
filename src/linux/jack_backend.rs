@@ -1,5 +1,5 @@
 use crate::{
-    AudioDeviceAvailableConfigs, AudioDeviceConfig, AudioServerConfig, BlockSizeConfigs,
+    AudioDeviceAvailableConfigs, AudioDeviceConfig, AudioServerConfig, BufferSizeConfigs,
     ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError,
 };
 
@@ -14,11 +14,11 @@ pub fn refresh_audio_server(server: &mut AudioServerConfig) {
     ) {
         Ok((client, status)) => {
             let sample_rate = client.sample_rate();
-            let block_size = client.buffer_size();
+            let buffer_size = client.buffer_size();
 
             println!(
-                "Jack server found. Status = {:?}, samplerate = {}, block size = {}",
-                status, sample_rate, block_size
+                "Jack server found. Status = {:?}, samplerate = {}, buffer size = {}",
+                status, sample_rate, buffer_size
             );
 
             let available_configs = AudioDeviceAvailableConfigs {
@@ -30,9 +30,9 @@ pub fn refresh_audio_server(server: &mut AudioServerConfig) {
                 min_input_channels: 0,
                 max_input_channels: MAX_JACK_CHANNELS,
 
-                block_size: BlockSizeConfigs::ConstantSize {
-                    min_block_size: block_size,
-                    max_block_size: block_size,
+                buffer_size: BufferSizeConfigs::ConstantSize {
+                    min_buffer_size: buffer_size,
+                    max_buffer_size: buffer_size,
                 },
             };
 
@@ -105,14 +105,14 @@ where
         }
 
         let sample_rate = client.sample_rate();
-        let max_block_size = client.buffer_size();
+        let max_buffer_size = client.buffer_size();
 
         let process = JackProcessHandler::new(
             rt_process_handler,
             audio_in_ports,
             audio_out_ports,
             sample_rate as u32,
-            max_block_size,
+            max_buffer_size,
         );
 
         // Activate the client, which starts the processing.
@@ -180,16 +180,16 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
         audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
         audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
         sample_rate: u32,
-        max_block_size: u32,
+        max_buffer_size: u32,
     ) -> Self {
         let mut audio_in_buffers = Vec::<Vec<f32>>::new();
         for _ in 0..audio_in_buffers.len() {
-            audio_in_buffers.push(Vec::with_capacity(max_block_size as usize));
+            audio_in_buffers.push(Vec::with_capacity(max_buffer_size as usize));
         }
 
         let mut audio_out_buffers = Vec::<Vec<f32>>::new();
         for _ in 0..audio_out_buffers.len() {
-            audio_out_buffers.push(Vec::with_capacity(max_block_size as usize));
+            audio_out_buffers.push(Vec::with_capacity(max_buffer_size as usize));
         }
 
         Self {

@@ -19,6 +19,8 @@ fn main() {
 
     dbg!(config.server_configs());
 
+    dbg!(config.estimated_latency());
+
     let res = config.spawn_rt_thread(MyRtProcessHandler {}, |e| {
         println!("Fatal stream error: {:?}", e);
     });

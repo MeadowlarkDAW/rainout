@@ -1,4 +1,7 @@
-use super::{AudioServerConfig, RtProcessHandler, SpawnRtThreadError, StreamError};
+use super::{
+    AudioServerConfig, BufferSizeConfigs, EstimatedLatency, RtProcessHandler, SpawnRtThreadError,
+    StreamError,
+};
 
 mod jack_backend;
 
@@ -53,6 +56,30 @@ impl DeviceConfigurator {
     }
     pub fn server_configs_mut(&mut self) -> &mut [AudioServerConfig] {
         &mut self.server_configs
+    }
+
+    pub fn estimated_latency(&self) -> Option<EstimatedLatency> {
+        // First server is Jack. Jack buffer size is always constant and not-configurable by the user, so just
+        // read this value from the available configs from the jack device.
+        let jack_server_config = &self.server_configs[0];
+
+        if jack_server_config.selected() {
+            if let Some(jack_device) = jack_server_config.audio_devices().first() {
+                if let BufferSizeConfigs::ConstantSize {
+                    max_buffer_size, ..
+                } = jack_device.available_configs.buffer_size
+                {
+                    if let Some(sample_rate) = jack_device.available_configs.sample_rates.first() {
+                        return Some(EstimatedLatency {
+                            frames: max_buffer_size,
+                            sample_rate: *sample_rate,
+                        });
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn spawn_rt_thread<P: RtProcessHandler, E>(

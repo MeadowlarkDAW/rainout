@@ -5,10 +5,10 @@ pub mod linux;
 pub use linux::*;
 
 #[derive(Debug, Clone, Copy)]
-pub enum BlockSizeConfigs {
+pub enum BufferSizeConfigs {
     ConstantSize {
-        min_block_size: u32,
-        max_block_size: u32,
+        min_buffer_size: u32,
+        max_buffer_size: u32,
     },
     UnknownSize,
 }
@@ -23,7 +23,7 @@ pub struct AudioDeviceAvailableConfigs {
     pub min_input_channels: u16,
     pub max_input_channels: u16,
 
-    pub block_size: BlockSizeConfigs,
+    pub buffer_size: BufferSizeConfigs,
 }
 
 #[derive(Debug, Clone)]
@@ -42,8 +42,8 @@ pub struct AudioDeviceConfig {
     /// The number of input channels to use. Set this to `None` to use the default settings.
     input_channels: Option<u16>,
 
-    /// The block size in frames. Set this to `None` to use the default settings.
-    block_size: Option<u32>,
+    /// The buffer size in frames. Set this to `None` to use the default settings.
+    buffer_size: Option<u32>,
 }
 
 impl AudioDeviceConfig {
@@ -57,7 +57,7 @@ impl AudioDeviceConfig {
             sample_rate: None,
             output_channels: None,
             input_channels: None,
-            block_size: None,
+            buffer_size: None,
         }
     }
 
@@ -122,30 +122,30 @@ impl AudioDeviceConfig {
         self.input_channels = input_channels;
     }
 
-    /// Set the block size (in frames) to use.
+    /// Set the buffer size (in frames) to use.
     ///
     /// Set this to `None` to use the default settings. The default settings will vary per platform/audio server/device.
     ///
     /// If given an invalid input that is out of the range given by `available_configs()`, then it will be ignored and
     /// nothing will be changed.
-    pub fn set_block_size(&mut self, block_size: Option<u32>) {
-        if let Some(block_size) = block_size {
-            match self.available_configs.block_size {
-                BlockSizeConfigs::ConstantSize {
-                    min_block_size,
-                    max_block_size,
+    pub fn set_buffer_size(&mut self, buffer_size: Option<u32>) {
+        if let Some(buffer_size) = buffer_size {
+            match self.available_configs.buffer_size {
+                BufferSizeConfigs::ConstantSize {
+                    min_buffer_size,
+                    max_buffer_size,
                 } => {
-                    if block_size < min_block_size || block_size > max_block_size {
+                    if buffer_size < min_buffer_size || buffer_size > max_buffer_size {
                         return;
                     }
                 }
-                BlockSizeConfigs::UnknownSize => {
+                BufferSizeConfigs::UnknownSize => {
                     return;
                 }
             }
         }
 
-        self.block_size = block_size;
+        self.buffer_size = buffer_size;
     }
 
     /// The sample rate to use. This will return `None` if using the default settings.
@@ -163,9 +163,9 @@ impl AudioDeviceConfig {
         self.input_channels
     }
 
-    /// The block size to use (in frames). This will return `None` if using the default settings.
-    pub fn block_size(&self) -> Option<u32> {
-        self.block_size
+    /// The buffer size to use (in frames). This will return `None` if using the default settings.
+    pub fn buffer_size(&self) -> Option<u32> {
+        self.buffer_size
     }
 
     pub fn set_selected(&mut self, selected: bool) {
@@ -201,18 +201,18 @@ impl AudioDeviceConfig {
                 self.input_channels = None;
             }
         }
-        if let Some(block_size) = self.block_size {
-            match self.available_configs.block_size {
-                BlockSizeConfigs::ConstantSize {
-                    min_block_size,
-                    max_block_size,
+        if let Some(buffer_size) = self.buffer_size {
+            match self.available_configs.buffer_size {
+                BufferSizeConfigs::ConstantSize {
+                    min_buffer_size,
+                    max_buffer_size,
                 } => {
-                    if block_size < min_block_size || block_size > max_block_size {
-                        self.block_size = None;
+                    if buffer_size < min_buffer_size || buffer_size > max_buffer_size {
+                        self.buffer_size = None;
                     }
                 }
-                BlockSizeConfigs::UnknownSize => {
-                    self.block_size = None;
+                BufferSizeConfigs::UnknownSize => {
+                    self.buffer_size = None;
                 }
             }
         }
@@ -288,6 +288,18 @@ pub struct ProcessInfo<'a> {
 
     pub sample_rate: u32,
     // TODO: MIDI IO
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EstimatedLatency {
+    pub frames: u32,
+    pub sample_rate: u32,
+}
+
+impl EstimatedLatency {
+    pub fn as_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(f64::from(self.frames) / f64::from(self.sample_rate))
+    }
 }
 
 impl<'a> std::fmt::Debug for ProcessInfo<'a> {
