@@ -1,59 +1,91 @@
 use crate::{
-    AudioDeviceAvailableConfigs, AudioDeviceConfig, AudioServerConfig, BufferSizeConfigs,
-    ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError,
+    AudioDeviceConfig, AudioDeviceInfo, AudioServerConfig, AudioServerInfo, BufferSizeInfo,
+    MidiDeviceConfig, MidiDeviceInfo, MidiServerConfig, MidiServerInfo, ProcessInfo,
+    RtProcessHandler, SpawnRtThreadError, StreamError,
 };
 
-static MAX_JACK_CHANNELS: u16 = 64;
-
-pub fn refresh_audio_server(server: &mut AudioServerConfig) {
-    println!("Searching for jack server...");
+pub fn refresh_audio_server(server: &mut AudioServerInfo) {
+    server.devices.clear();
 
     match jack::Client::new(
         "rustydaw_io_dummy_client",
         jack::ClientOptions::NO_START_SERVER,
     ) {
-        Ok((client, status)) => {
-            let sample_rate = client.sample_rate();
-            let buffer_size = client.buffer_size();
+        Ok((client, _status)) => {
+            let sample_rate = client.sample_rate() as u32;
+            let buffer_size = client.buffer_size() as u32;
 
-            println!(
-                "Jack server found. Status = {:?}, samplerate = {}, buffer size = {}",
-                status, sample_rate, buffer_size
+            // Count system ports
+            let system_in_ports: Vec<String> = client.ports(
+                None,
+                Some("32 bit float mono audio"),
+                jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
             );
-
-            let available_configs = AudioDeviceAvailableConfigs {
-                sample_rates: vec![sample_rate as u32],
-
-                min_output_channels: 0,
-                max_output_channels: MAX_JACK_CHANNELS,
-
-                min_input_channels: 0,
-                max_input_channels: MAX_JACK_CHANNELS,
-
-                buffer_size: BufferSizeConfigs::ConstantSize {
-                    min_buffer_size: buffer_size,
-                    max_buffer_size: buffer_size,
-                },
-            };
+            let system_out_ports: Vec<String> = client.ports(
+                None,
+                Some("32 bit float mono audio"),
+                jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
+            );
+            let n_system_in_ports = system_in_ports.len() as u16;
+            let n_system_out_ports = system_out_ports.len() as u16;
 
             // Only one jack device is ever used.
 
-            if let Some(device) = server.devices.first_mut() {
-                device.update_available_configs(available_configs);
-            } else {
-                server.devices.push(AudioDeviceConfig::new(
-                    String::from("Default Jack Device"),
-                    available_configs,
-                ));
+            server.devices.push(AudioDeviceInfo {
+                name: String::from("Jack System Audio"),
+
+                sample_rates: vec![sample_rate],
+
+                min_output_channels: n_system_out_ports,
+                max_output_channels: n_system_out_ports,
+
+                min_input_channels: n_system_in_ports,
+                max_input_channels: n_system_in_ports,
+
+                buffer_size: BufferSizeInfo::ConstantSize {
+                    min_buffer_size: buffer_size,
+                    max_buffer_size: buffer_size,
+                },
+            });
+
+            server.active = true;
+        }
+        Err(_) => {
+            server.active = false;
+        }
+    }
+}
+
+pub fn refresh_midi_server(server: &mut MidiServerInfo) {
+    server.in_devices.clear();
+    server.out_devices.clear();
+
+    match jack::Client::new(
+        "rustydaw_io_dummy_client",
+        jack::ClientOptions::NO_START_SERVER,
+    ) {
+        Ok((client, _status)) => {
+            // Get existing midi ports.
+            let system_in_ports: Vec<String> =
+                client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_OUTPUT);
+            let system_out_ports: Vec<String> =
+                client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_INPUT);
+
+            for system_in_port in system_in_ports.iter() {
+                server.in_devices.push(MidiDeviceInfo {
+                    name: system_in_port.clone(),
+                });
+            }
+            for system_out_port in system_out_ports.iter() {
+                server.out_devices.push(MidiDeviceInfo {
+                    name: system_out_port.clone(),
+                });
             }
 
             server.active = true;
         }
-        Err(e) => {
-            println!("Error searching for jack server: {:?}", e);
-
+        Err(_) => {
             server.active = false;
-            server.devices.clear();
         }
     }
 }
@@ -66,100 +98,98 @@ where
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E>(
+    audio_device_config: &AudioDeviceConfig,
+    midi_in_device_config: Option<&[MidiDeviceConfig]>,
+    midi_out_device_config: Option<&[MidiDeviceConfig]>,
     rt_process_handler: P,
     error_callback: E,
-    audio_server_config: &AudioServerConfig,
-    client_name: Option<String>,
+    use_client_name: Option<String>,
 ) -> Result<JackRtThreadHandle<P, E>, SpawnRtThreadError>
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    if let Some(audio_device_config) = audio_server_config.devices.first() {
-        // Only one jack device is ever needed, so if the server is selected, treat it like
-        // the only audio device is also selected.
-
-        let client_name = client_name.unwrap_or(String::from("rusty-daw-io"));
-
-        let (client, _status) =
-            jack::Client::new(&client_name, jack::ClientOptions::NO_START_SERVER)?;
-
-        let audio_out_channels = audio_device_config.output_channels.unwrap_or(2);
-        let audio_in_channels = audio_device_config.input_channels.unwrap_or(2);
-
-        let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
-        let mut audio_in_port_names = Vec::<String>::new();
-        for i in 0..audio_in_channels {
-            let name = format!("audio_in_{}", i + 1);
-            let port = client.register_port(&name, jack::AudioIn::default())?;
-            audio_in_port_names.push(port.name()?);
-            audio_in_ports.push(port);
-        }
-
-        let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
-        let mut audio_out_port_names = Vec::<String>::new();
-        for i in 0..audio_out_channels {
-            let name = format!("audio_out_{}", i + 1);
-            let port = client.register_port(&name, jack::AudioOut::default())?;
-            audio_out_port_names.push(port.name()?);
-            audio_out_ports.push(port);
-        }
-
-        let sample_rate = client.sample_rate();
-        let max_buffer_size = client.buffer_size();
-
-        let process = JackProcessHandler::new(
-            rt_process_handler,
-            audio_in_ports,
-            audio_out_ports,
-            sample_rate as u32,
-            max_buffer_size,
-        );
-
-        // Activate the client, which starts the processing.
-        let async_client = client.activate_async(
-            JackNotificationHandler {
-                error_callback: Some(error_callback),
-            },
-            process,
-        )?;
-
-        // Try to automatically connect to system inputs/outputs.
-
-        // Find system audio inputs
-        let system_in_ports: Vec<String> = async_client.as_client().ports(
-            None,
-            Some("32 bit float mono audio"),
-            jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
-        );
-        println!("physical in ports: {:?}", system_in_ports);
-        // Find system audio outputs
-        let system_out_ports: Vec<String> = async_client.as_client().ports(
-            None,
-            Some("32 bit float mono audio"),
-            jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
-        );
-        println!("physical out ports: {:?}", system_out_ports);
-
-        for (system_in_port, in_port) in system_in_ports.iter().zip(audio_in_port_names.iter()) {
-            async_client
-                .as_client()
-                .connect_ports_by_name(system_in_port, in_port)?;
-        }
-        for (system_out_port, out_port) in system_out_ports.iter().zip(audio_out_port_names.iter())
-        {
-            async_client
-                .as_client()
-                .connect_ports_by_name(out_port, system_out_port)?;
-        }
-
-        Ok(JackRtThreadHandle {
-            _async_client: async_client,
-        })
-    } else {
-        Err(SpawnRtThreadError::AudioServerUnavailable(String::from(
-            audio_server_config.name(),
-        )))
+    if &audio_device_config.device_name != "Jack System Audio" {
+        return Err(SpawnRtThreadError::AudioDeviceNotFoundInServer(
+            audio_device_config.device_name.clone(),
+            String::from("Jack"),
+        ));
     }
+
+    let client_name = use_client_name.unwrap_or(String::from("rusty-daw-io"));
+
+    let (client, _status) = jack::Client::new(&client_name, jack::ClientOptions::NO_START_SERVER)?;
+
+    let audio_out_channels = audio_device_config.use_num_outputs.unwrap_or(2).min(64);
+    let audio_in_channels = audio_device_config.use_num_inputs.unwrap_or(2).min(64);
+
+    let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
+    let mut audio_in_port_names = Vec::<String>::new();
+    for i in 0..audio_in_channels {
+        let name = format!("audio_in_{}", i + 1);
+        let port = client.register_port(&name, jack::AudioIn::default())?;
+        audio_in_port_names.push(port.name()?);
+        audio_in_ports.push(port);
+    }
+
+    let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
+    let mut audio_out_port_names = Vec::<String>::new();
+    for i in 0..audio_out_channels {
+        let name = format!("audio_out_{}", i + 1);
+        let port = client.register_port(&name, jack::AudioOut::default())?;
+        audio_out_port_names.push(port.name()?);
+        audio_out_ports.push(port);
+    }
+
+    let sample_rate = client.sample_rate();
+    let max_buffer_size = client.buffer_size();
+
+    let process = JackProcessHandler::new(
+        rt_process_handler,
+        audio_in_ports,
+        audio_out_ports,
+        sample_rate as u32,
+        max_buffer_size,
+    );
+
+    // Activate the client, which starts the processing.
+    let async_client = client.activate_async(
+        JackNotificationHandler {
+            error_callback: Some(error_callback),
+        },
+        process,
+    )?;
+
+    // Try to automatically connect to system inputs/outputs.
+
+    // Find system audio inputs
+    let system_in_ports: Vec<String> = async_client.as_client().ports(
+        None,
+        Some("32 bit float mono audio"),
+        jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
+    );
+    println!("physical in ports: {:?}", system_in_ports);
+    // Find system audio outputs
+    let system_out_ports: Vec<String> = async_client.as_client().ports(
+        None,
+        Some("32 bit float mono audio"),
+        jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
+    );
+    println!("physical out ports: {:?}", system_out_ports);
+
+    for (system_in_port, in_port) in system_in_ports.iter().zip(audio_in_port_names.iter()) {
+        async_client
+            .as_client()
+            .connect_ports_by_name(system_in_port, in_port)?;
+    }
+    for (system_out_port, out_port) in system_out_ports.iter().zip(audio_out_port_names.iter()) {
+        async_client
+            .as_client()
+            .connect_ports_by_name(out_port, system_out_port)?;
+    }
+
+    Ok(JackRtThreadHandle {
+        _async_client: async_client,
+    })
 }
 
 struct JackProcessHandler<P: RtProcessHandler> {
@@ -289,6 +319,8 @@ where
             "JACK: shutdown with status {:?} because \"{}\"",
             status, reason
         );
+
+        println!("{:?}", msg);
 
         if let Some(error_callback) = self.error_callback.take() {
             (error_callback)(StreamError::AudioServerDisconnected(msg))

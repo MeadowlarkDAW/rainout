@@ -1,36 +1,27 @@
-use rusty_daw_io::{DeviceConfigurator, ProcessInfo, RtProcessHandler};
+use rusty_daw_io::{
+    AudioDeviceConfig, AudioServerConfig, DeviceInfo, ProcessInfo, RtProcessHandler,
+};
 
 fn main() {
-    let mut config = DeviceConfigurator::new(None);
+    let info = DeviceInfo::new();
 
-    config
-        .server_configs_mut()
-        .first_mut()
-        .unwrap()
-        .set_selected(true);
-    let jack_server_config = config.server_configs_mut().first_mut().unwrap();
+    dbg!(info.audio_server_info());
+    dbg!(info.midi_server_info());
 
-    jack_server_config.set_selected(true);
+    let audio_config = AudioServerConfig {
+        server_name: String::from("Jack"),
+        use_devices: vec![AudioDeviceConfig {
+            device_name: String::from("Jack System Audio"),
+            use_num_outputs: Some(4),
+            ..AudioDeviceConfig::default()
+        }],
+    };
 
-    if let Some(jack_device_config) = jack_server_config.audio_devices_mut().first_mut() {
-        jack_device_config.set_selected(true);
-        jack_device_config.set_output_channels(Some(4));
-    }
-
-    dbg!(config.server_configs());
-
-    dbg!(config.estimated_latency());
-
-    let res = config.spawn_rt_thread(MyRtProcessHandler {}, |e| {
-        println!("Fatal stream error: {:?}", e);
-    });
-
-    match &res {
-        Ok(stream_handle) => {}
-        Err((config, e)) => {
-            println!("Error opening stream: {:?}", e);
-        }
-    }
+    let stream_handle =
+        rusty_daw_io::spawn_rt_thread(&audio_config, None, None, MyRtProcessHandler {}, |e| {
+            println!("Fatal stream error: {:?}", e);
+        })
+        .unwrap();
 
     // Wait for user input to quit
     println!("Press enter/return to quit...");
