@@ -4,6 +4,8 @@ use crate::{
     RtProcessHandler, SpawnRtThreadError, StreamError,
 };
 
+static MAX_JACK_CHANNELS: u16 = 64;
+
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
     server.devices.clear();
 
@@ -26,8 +28,6 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
                 Some("32 bit float mono audio"),
                 jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
             );
-            let n_system_in_ports = system_in_ports.len() as u16;
-            let n_system_out_ports = system_out_ports.len() as u16;
 
             // Only one jack device is ever used.
 
@@ -36,11 +36,11 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
 
                 sample_rates: vec![sample_rate],
 
-                min_output_channels: n_system_out_ports,
-                max_output_channels: n_system_out_ports,
+                min_output_channels: 0,
+                max_output_channels: MAX_JACK_CHANNELS,
 
-                min_input_channels: n_system_in_ports,
-                max_input_channels: n_system_in_ports,
+                min_input_channels: 0,
+                max_input_channels: MAX_JACK_CHANNELS,
 
                 buffer_size: BufferSizeInfo::ConstantSize {
                     min_buffer_size: buffer_size,
@@ -119,8 +119,14 @@ where
 
     let (client, _status) = jack::Client::new(&client_name, jack::ClientOptions::NO_START_SERVER)?;
 
-    let audio_out_channels = audio_device_config.use_num_outputs.unwrap_or(2).min(64);
-    let audio_in_channels = audio_device_config.use_num_inputs.unwrap_or(2).min(64);
+    let audio_out_channels = audio_device_config
+        .use_num_outputs
+        .unwrap_or(2)
+        .min(MAX_JACK_CHANNELS);
+    let audio_in_channels = audio_device_config
+        .use_num_inputs
+        .unwrap_or(2)
+        .min(MAX_JACK_CHANNELS);
 
     let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
     let mut audio_in_port_names = Vec::<String>::new();
