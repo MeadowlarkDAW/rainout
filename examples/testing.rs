@@ -10,11 +10,26 @@ fn main() {
 
     let audio_config = AudioServerConfig {
         server_name: String::from("Jack"),
-        use_devices: vec![AudioDeviceConfig {
-            device_name: String::from("Jack System Audio"),
-            use_num_outputs: Some(4),
-            ..AudioDeviceConfig::default()
-        }],
+        use_in_devices: vec![
+            AudioDeviceConfig {
+                device_name: String::from("system:capture_1"),
+                use_num_channels: None,
+            },
+            AudioDeviceConfig {
+                device_name: String::from("system:capture_2"),
+                use_num_channels: None,
+            },
+        ],
+        use_out_devices: vec![
+            AudioDeviceConfig {
+                device_name: String::from("system:playback_1"),
+                use_num_channels: None,
+            },
+            AudioDeviceConfig {
+                device_name: String::from("system:playback_2"),
+                use_num_channels: None,
+            },
+        ],
         use_sample_rate: None,
         use_buffer_size: None,
     };

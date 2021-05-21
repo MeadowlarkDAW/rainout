@@ -102,25 +102,20 @@ where
 {
     match audio_config.server_name.as_str() {
         "Jack" => {
-            if let Some(device_config) = audio_config.use_devices.first() {
-                let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
-                    &device_config,
-                    None,
-                    None,
-                    rt_process_handler,
-                    error_callback,
-                    use_client_name,
-                )?;
+            let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
+                &audio_config.use_in_devices,
+                &audio_config.use_out_devices,
+                &[],
+                &[],
+                rt_process_handler,
+                error_callback,
+                use_client_name,
+            )?;
 
-                return Ok(StreamHandle {
-                    stream_info,
-                    _jack_server_handle: Some(jack_server_handle),
-                });
-            } else {
-                return Err(SpawnRtThreadError::NoAudioDeviceSelected(String::from(
-                    "Jack",
-                )));
-            }
+            return Ok(StreamHandle {
+                stream_info,
+                _jack_server_handle: Some(jack_server_handle),
+            });
         }
         s => {
             let s = String::from(s);

@@ -17,18 +17,16 @@ pub enum BufferSizeInfo {
 pub struct AudioDeviceInfo {
     pub name: String,
 
-    pub min_output_channels: u16,
-    pub max_output_channels: u16,
-
-    pub min_input_channels: u16,
-    pub max_input_channels: u16,
+    pub min_channels: u16,
+    pub max_channels: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub devices: Vec<AudioDeviceInfo>,
+    pub in_devices: Vec<AudioDeviceInfo>,
+    pub out_devices: Vec<AudioDeviceInfo>,
     pub sample_rates: Vec<u32>,
     pub buffer_size: BufferSizeInfo,
     pub active: bool,
@@ -39,7 +37,8 @@ impl AudioServerInfo {
         Self {
             name,
             version,
-            devices: Vec::new(),
+            in_devices: Vec::new(),
+            out_devices: Vec::new(),
             sample_rates: Vec::new(),
             buffer_size: BufferSizeInfo::UnknownSize,
             active: false,
@@ -76,16 +75,14 @@ impl MidiServerInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioDeviceConfig {
     pub device_name: String,
-    pub use_num_outputs: Option<u16>,
-    pub use_num_inputs: Option<u16>,
+    pub use_num_channels: Option<u16>,
 }
 
 impl Default for AudioDeviceConfig {
     fn default() -> Self {
         Self {
             device_name: String::new(),
-            use_num_outputs: None,
-            use_num_inputs: None,
+            use_num_channels: None,
         }
     }
 }
@@ -93,7 +90,8 @@ impl Default for AudioDeviceConfig {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioServerConfig {
     pub server_name: String,
-    pub use_devices: Vec<AudioDeviceConfig>,
+    pub use_in_devices: Vec<AudioDeviceConfig>,
+    pub use_out_devices: Vec<AudioDeviceConfig>,
     pub use_sample_rate: Option<u32>,
     pub use_buffer_size: Option<u32>,
 }
@@ -113,8 +111,7 @@ pub struct MidiServerConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioDeviceStreamInfo {
     pub name: String,
-    pub inputs: u16,
-    pub outputs: u16,
+    pub channels: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -125,7 +122,8 @@ pub struct MidiDeviceStreamInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamInfo {
     pub server_name: String,
-    pub audio_devices: Vec<AudioDeviceStreamInfo>,
+    pub audio_in_devices: Vec<AudioDeviceStreamInfo>,
+    pub audio_out_devices: Vec<AudioDeviceStreamInfo>,
     pub midi_in_devices: Vec<MidiDeviceStreamInfo>,
     pub midi_out_devices: Vec<MidiDeviceStreamInfo>,
     pub sample_rate: u32,
@@ -140,50 +138,69 @@ pub trait RtProcessHandler: 'static + Send + Sized {
     fn process(&mut self, proc_info: ProcessInfo);
 }
 
-pub struct AudioDeviceBuffers {
+pub struct AudioDeviceBuffer {
     pub(crate) device_name: String,
-    pub(crate) inputs: Vec<Vec<f32>>,
-    pub(crate) outputs: Vec<Vec<f32>>,
+    pub(crate) buffers: Vec<Vec<f32>>,
+    pub(crate) frames: usize,
 }
 
-impl AudioDeviceBuffers {
+impl AudioDeviceBuffer {
     pub fn device_name(&self) -> &String {
         &self.device_name
     }
 
-    pub fn inputs(&self) -> &[Vec<f32>] {
-        &self.inputs
+    pub fn get(&self, channel: usize) -> Option<&[f32]> {
+        self.buffers.get(channel).map(|b| b.as_slice())
     }
 
-    pub fn outputs(&mut self) -> &mut [Vec<f32>] {
-        &mut self.outputs
+    pub fn get_mut(&mut self, channel: usize) -> Option<&mut [f32]> {
+        self.buffers.get_mut(channel).map(|b| b.as_mut_slice())
     }
 
-    pub fn input_channels(&self) -> usize {
-        self.inputs.len()
-    }
-    pub fn output_channels(&self) -> usize {
-        self.outputs.len()
+    pub fn buffers(&self) -> &[Vec<f32>] {
+        self.buffers.as_slice()
     }
 
-    pub fn is_duplex(&self) -> bool {
-        self.inputs.len() > 0 && self.outputs.len() > 0
+    pub fn buffers_mut(&mut self) -> &mut [Vec<f32>] {
+        self.buffers.as_mut_slice()
+    }
+
+    pub fn channels(&self) -> usize {
+        self.buffers.len()
+    }
+
+    pub fn frames(&self) -> usize {
+        self.frames
     }
 }
 
-impl std::fmt::Debug for AudioDeviceBuffers {
+impl std::ops::Index<usize> for AudioDeviceBuffer {
+    type Output = [f32];
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.buffers[index].as_slice()
+    }
+}
+impl std::ops::IndexMut<usize> for AudioDeviceBuffer {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.buffers[index].as_mut_slice()
+    }
+}
+
+impl std::fmt::Debug for AudioDeviceBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AudioDeviceBuffers")
             .field("device_name", &self.device_name)
-            .field("input_channels", &self.inputs.len())
-            .field("output_channels", &self.outputs.len())
+            .field("channels", &self.buffers.len())
+            .field("frames", &self.frames)
             .finish()
     }
 }
 
 #[derive(Debug)]
 pub struct ProcessInfo<'a> {
-    pub audio_devices: &'a mut [AudioDeviceBuffers],
+    pub audio_in: &'a [AudioDeviceBuffer],
+    pub audio_out: &'a mut [AudioDeviceBuffer],
     pub audio_frames: usize,
 
     pub sample_rate: u32,
