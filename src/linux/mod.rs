@@ -1,6 +1,6 @@
 use super::{
     AudioServerConfig, AudioServerInfo, MidiServerConfig, MidiServerInfo, RtProcessHandler,
-    SpawnRtThreadError, StreamError,
+    SpawnRtThreadError, StreamError, StreamInfo,
 };
 
 mod jack_backend;
@@ -9,7 +9,17 @@ pub struct StreamHandle<P: RtProcessHandler, E>
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
+    stream_info: StreamInfo,
     _jack_server_handle: Option<jack_backend::JackRtThreadHandle<P, E>>,
+}
+
+impl<P: RtProcessHandler, E> StreamHandle<P, E>
+where
+    E: 'static + Send + Sync + FnOnce(StreamError),
+{
+    pub fn stream_info(&self) -> &StreamInfo {
+        &self.stream_info
+    }
 }
 
 pub struct DeviceInfo {
@@ -93,7 +103,7 @@ where
     match audio_config.server_name.as_str() {
         "Jack" => {
             if let Some(device_config) = audio_config.use_devices.first() {
-                let jack_server_handle = jack_backend::spawn_rt_thread(
+                let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
                     &device_config,
                     None,
                     None,
@@ -103,6 +113,7 @@ where
                 )?;
 
                 return Ok(StreamHandle {
+                    stream_info,
                     _jack_server_handle: Some(jack_server_handle),
                 });
             } else {

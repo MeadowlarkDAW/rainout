@@ -1,7 +1,7 @@
 use crate::{
-    AudioDeviceConfig, AudioDeviceInfo, AudioServerConfig, AudioServerInfo, BufferSizeInfo,
-    MidiDeviceConfig, MidiDeviceInfo, MidiServerConfig, MidiServerInfo, ProcessInfo,
-    RtProcessHandler, SpawnRtThreadError, StreamError,
+    AudioDeviceBuffers, AudioDeviceConfig, AudioDeviceInfo, AudioDeviceStreamInfo, AudioServerInfo,
+    BufferSizeInfo, MidiDeviceConfig, MidiDeviceInfo, MidiServerInfo, ProcessInfo,
+    RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
 };
 
 static MAX_JACK_CHANNELS: u16 = 64;
@@ -15,42 +15,28 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
     ) {
         Ok((client, _status)) => {
             let sample_rate = client.sample_rate() as u32;
-            let buffer_size = client.buffer_size() as u32;
+            let max_buffer_size = client.buffer_size() as u32;
 
-            // Count system ports
-            let system_in_ports: Vec<String> = client.ports(
-                None,
-                Some("32 bit float mono audio"),
-                jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
-            );
-            let system_out_ports: Vec<String> = client.ports(
-                None,
-                Some("32 bit float mono audio"),
-                jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
-            );
+            server.sample_rates = vec![sample_rate];
+            server.buffer_size = BufferSizeInfo::MaximumSize(max_buffer_size);
 
             // Only one jack device is ever used.
 
             server.devices.push(AudioDeviceInfo {
                 name: String::from("Jack System Audio"),
 
-                sample_rates: vec![sample_rate],
-
                 min_output_channels: 0,
                 max_output_channels: MAX_JACK_CHANNELS,
 
                 min_input_channels: 0,
                 max_input_channels: MAX_JACK_CHANNELS,
-
-                buffer_size: BufferSizeInfo::ConstantSize {
-                    min_buffer_size: buffer_size,
-                    max_buffer_size: buffer_size,
-                },
             });
 
             server.active = true;
         }
         Err(_) => {
+            server.sample_rates.clear();
+            server.buffer_size = BufferSizeInfo::UnknownSize;
             server.active = false;
         }
     }
@@ -101,10 +87,10 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E>(
     audio_device_config: &AudioDeviceConfig,
     midi_in_device_config: Option<&[MidiDeviceConfig]>,
     midi_out_device_config: Option<&[MidiDeviceConfig]>,
-    rt_process_handler: P,
+    mut rt_process_handler: P,
     error_callback: E,
     use_client_name: Option<String>,
-) -> Result<JackRtThreadHandle<P, E>, SpawnRtThreadError>
+) -> Result<(StreamInfo, JackRtThreadHandle<P, E>), SpawnRtThreadError>
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
@@ -149,6 +135,22 @@ where
     let sample_rate = client.sample_rate();
     let max_buffer_size = client.buffer_size();
 
+    // Only one Jack device is ever used.
+    let stream_info = StreamInfo {
+        server_name: String::from("Jack"),
+        audio_devices: vec![AudioDeviceStreamInfo {
+            name: String::from("Jack System Audio"),
+            inputs: audio_in_channels,
+            outputs: audio_out_channels,
+        }],
+        midi_in_devices: vec![],
+        midi_out_devices: vec![],
+        sample_rate: sample_rate as u32,
+        audio_buffer_size: BufferSizeInfo::MaximumSize(max_buffer_size),
+    };
+
+    rt_process_handler.init(&stream_info);
+
     let process = JackProcessHandler::new(
         rt_process_handler,
         audio_in_ports,
@@ -173,14 +175,12 @@ where
         Some("32 bit float mono audio"),
         jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
     );
-    println!("physical in ports: {:?}", system_in_ports);
     // Find system audio outputs
     let system_out_ports: Vec<String> = async_client.as_client().ports(
         None,
         Some("32 bit float mono audio"),
         jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
     );
-    println!("physical out ports: {:?}", system_out_ports);
 
     for (system_in_port, in_port) in system_in_ports.iter().zip(audio_in_port_names.iter()) {
         async_client
@@ -193,9 +193,12 @@ where
             .connect_ports_by_name(out_port, system_out_port)?;
     }
 
-    Ok(JackRtThreadHandle {
-        _async_client: async_client,
-    })
+    Ok((
+        stream_info,
+        JackRtThreadHandle {
+            _async_client: async_client,
+        },
+    ))
 }
 
 struct JackProcessHandler<P: RtProcessHandler> {
@@ -204,8 +207,7 @@ struct JackProcessHandler<P: RtProcessHandler> {
     audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
     audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
 
-    audio_in_buffers: Vec<Vec<f32>>,
-    audio_out_buffers: Vec<Vec<f32>>,
+    audio_device_buffers: Vec<AudioDeviceBuffers>,
 
     sample_rate: u32,
 }
@@ -218,22 +220,29 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
         sample_rate: u32,
         max_buffer_size: u32,
     ) -> Self {
-        let mut audio_in_buffers = Vec::<Vec<f32>>::new();
-        for _ in 0..audio_in_buffers.len() {
-            audio_in_buffers.push(Vec::with_capacity(max_buffer_size as usize));
-        }
+        // Only one Jack device is ever used.
+        let mut audio_device_buffers = vec![AudioDeviceBuffers {
+            device_name: String::from("Jack System Audio"),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        }];
 
-        let mut audio_out_buffers = Vec::<Vec<f32>>::new();
-        for _ in 0..audio_out_buffers.len() {
-            audio_out_buffers.push(Vec::with_capacity(max_buffer_size as usize));
+        for _ in 0..audio_in_ports.len() {
+            audio_device_buffers[0]
+                .inputs
+                .push(Vec::with_capacity(max_buffer_size as usize));
+        }
+        for _ in 0..audio_out_ports.len() {
+            audio_device_buffers[0]
+                .outputs
+                .push(Vec::with_capacity(max_buffer_size as usize));
         }
 
         Self {
             rt_process_handler,
             audio_in_ports,
             audio_out_ports,
-            audio_in_buffers,
-            audio_out_buffers,
+            audio_device_buffers,
             sample_rate,
         }
     }
@@ -242,8 +251,9 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
 impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let mut audio_frames = 0;
-        for (buffer, port) in self
-            .audio_in_buffers
+
+        for (buffer, port) in self.audio_device_buffers[0]
+            .inputs
             .iter_mut()
             .zip(self.audio_in_ports.iter())
         {
@@ -264,7 +274,7 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
             }
         }
 
-        for buffer in self.audio_out_buffers.iter_mut() {
+        for buffer in self.audio_device_buffers[0].outputs.iter_mut() {
             // Clear output buffer with zeros
             buffer.clear();
 
@@ -273,23 +283,15 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
             buffer.resize(audio_frames, 0.0);
         }
 
-        let audio_in_channels = self.audio_in_buffers.len() as u16;
-        let audio_out_channels = self.audio_out_buffers.len() as u16;
-
         self.rt_process_handler.process(ProcessInfo {
-            audio_inputs: &self.audio_in_buffers,
-            audio_outputs: &mut self.audio_out_buffers,
-
-            audio_in_channels,
-            audio_out_channels,
-
+            audio_devices: &mut self.audio_device_buffers,
             audio_frames,
 
             sample_rate: self.sample_rate,
         });
 
-        for (buffer, port) in self
-            .audio_out_buffers
+        for (buffer, port) in self.audio_device_buffers[0]
+            .outputs
             .iter()
             .zip(self.audio_out_ports.iter_mut())
         {
