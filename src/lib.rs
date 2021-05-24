@@ -130,13 +130,26 @@ pub struct MidiServerConfig {
     pub use_out_devices: Vec<MidiDeviceConfig>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct DeviceIndex(usize);
+
+impl DeviceIndex {
+    pub(crate) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub fn index(&self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct InternalAudioDeviceInfo {
+pub struct InternalAudioDevice {
     /// The ID of this device. This ID is for the "internal" device that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the name of the actual
     /// system hardware device that this "internal" device is connected to.
     ///
-    /// This ID is unique for every `AudioDeviceConfig` and `MidiDeviceConfig`.
+    /// This ID is unique for every `InternalAudioDevice` and `InternalMidiDevice`.
     ///
     /// Examples of IDs can include:
     ///
@@ -144,7 +157,11 @@ pub struct InternalAudioDeviceInfo {
     /// * Drums Mic
     /// * Headphones Out
     /// * Speakers Out
-    pub id: String,
+    pub id_name: String,
+
+    /// The index were this device appears in the realtime thread's buffers. This is what should actually be sent
+    /// to the realtime thread for communication on what device to use.
+    pub id_index: DeviceIndex,
 
     /// The type of connection.
     pub connection: ConnectionType,
@@ -154,17 +171,26 @@ pub struct InternalAudioDeviceInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct InternalMidiDeviceInfo {
-    pub id: String,
+pub struct InternalMidiDevice {
+    /// The ID of this device. This ID is for the "internal" device that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the name of the actual
+    /// system hardware device that this "internal" device is connected to.
+    ///
+    /// This ID is unique for every `InternalAudioDevice` and `InternalMidiDevice`.
+    pub id_name: String,
+
+    /// The index were this device appears in the realtime thread's buffers. This is what should actually be sent
+    /// to the realtime thread for communication on which device to use.
+    pub id_index: DeviceIndex,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamInfo {
     pub server_name: String,
-    pub internal_audio_in_devices: Vec<InternalAudioDeviceInfo>,
-    pub internal_audio_out_devices: Vec<InternalAudioDeviceInfo>,
-    pub internal_midi_in_devices: Vec<InternalMidiDeviceInfo>,
-    pub internal_midi_out_devices: Vec<InternalMidiDeviceInfo>,
+    pub audio_in: Vec<InternalAudioDevice>,
+    pub audio_out: Vec<InternalAudioDevice>,
+    pub midi_in: Vec<InternalMidiDevice>,
+    pub midi_out: Vec<InternalMidiDevice>,
     pub sample_rate: u32,
     pub audio_buffer_size: BufferSizeInfo,
 }
@@ -179,7 +205,6 @@ pub trait RtProcessHandler: 'static + Send + Sized {
 
 #[derive(Debug)]
 pub struct AudioDeviceBuffer {
-    pub(crate) id: String,
     pub(crate) channels: Vec<Vec<f32>>,
     pub(crate) frames: usize,
 }
@@ -199,10 +224,6 @@ impl AudioDeviceBuffer {
 }
 
 impl AudioDeviceBuffer {
-    pub fn id(&self) -> &String {
-        &self.id
-    }
-
     pub fn get(&self, channel: usize) -> Option<&[f32]> {
         self.channels.get(channel).map(|c| c.as_slice())
     }

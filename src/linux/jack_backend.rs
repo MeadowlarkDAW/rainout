@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use crate::{
     AudioDeviceBuffer, AudioDeviceConfig, AudioServerInfo, BufferSizeInfo, ConnectionType,
-    InternalAudioDeviceInfo, InternalMidiDeviceInfo, MidiDeviceConfig, MidiServerInfo, ProcessInfo,
-    RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo, SystemAudioDeviceInfo,
-    SystemMidiDeviceInfo,
+    DeviceIndex, InternalAudioDevice, InternalMidiDevice, MidiDeviceConfig, MidiServerInfo,
+    ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    SystemAudioDeviceInfo, SystemMidiDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
@@ -120,8 +120,8 @@ where
     let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
     let mut audio_in_port_names = Vec::<String>::new();
     let mut audio_in_connected_port_names = Vec::<Option<String>>::new();
-    let mut internal_audio_in_devices = Vec::<InternalAudioDeviceInfo>::new();
-    for audio_device in audio_in_device_config.iter() {
+    let mut audio_in_devices = Vec::<InternalAudioDevice>::new();
+    for (i, audio_device) in audio_in_device_config.iter().enumerate() {
         // See if device wants to be connected to a system device.
         match &audio_device.connection {
             ConnectionType::SystemPorts { ports } => {
@@ -131,8 +131,9 @@ where
                     ));
                 }
 
-                internal_audio_in_devices.push(InternalAudioDeviceInfo {
-                    id: audio_device.id.clone(),
+                audio_in_devices.push(InternalAudioDevice {
+                    id_name: audio_device.id.clone(),
+                    id_index: DeviceIndex::new(i),
                     connection: audio_device.connection.clone(),
                     channels: ports.len() as u16,
                 });
@@ -153,8 +154,9 @@ where
                     ));
                 }
 
-                internal_audio_in_devices.push(InternalAudioDeviceInfo {
-                    id: audio_device.id.clone(),
+                audio_in_devices.push(InternalAudioDevice {
+                    id_name: audio_device.id.clone(),
+                    id_index: DeviceIndex::new(i),
                     connection: audio_device.connection.clone(),
                     channels: *channels,
                 });
@@ -174,8 +176,8 @@ where
     let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
     let mut audio_out_port_names = Vec::<String>::new();
     let mut audio_out_connected_port_names = Vec::<Option<String>>::new();
-    let mut internal_audio_out_devices = Vec::<InternalAudioDeviceInfo>::new();
-    for audio_device in audio_out_device_config.iter() {
+    let mut audio_out_devices = Vec::<InternalAudioDevice>::new();
+    for (i, audio_device) in audio_out_device_config.iter().enumerate() {
         // See if device wants to be connected to a system device.
         match &audio_device.connection {
             ConnectionType::SystemPorts { ports } => {
@@ -185,8 +187,9 @@ where
                     ));
                 }
 
-                internal_audio_out_devices.push(InternalAudioDeviceInfo {
-                    id: audio_device.id.clone(),
+                audio_out_devices.push(InternalAudioDevice {
+                    id_name: audio_device.id.clone(),
+                    id_index: DeviceIndex::new(i),
                     connection: audio_device.connection.clone(),
                     channels: ports.len() as u16,
                 });
@@ -207,8 +210,9 @@ where
                     ));
                 }
 
-                internal_audio_out_devices.push(InternalAudioDeviceInfo {
-                    id: audio_device.id.clone(),
+                audio_out_devices.push(InternalAudioDevice {
+                    id_name: audio_device.id.clone(),
+                    id_index: DeviceIndex::new(i),
                     connection: audio_device.connection.clone(),
                     channels: *channels,
                 });
@@ -230,10 +234,10 @@ where
 
     let stream_info = StreamInfo {
         server_name: String::from("Jack"),
-        internal_audio_in_devices,
-        internal_audio_out_devices,
-        internal_midi_in_devices: vec![],
-        internal_midi_out_devices: vec![],
+        audio_in: audio_in_devices,
+        audio_out: audio_out_devices,
+        midi_in: vec![],
+        midi_out: vec![],
         sample_rate: sample_rate as u32,
         audio_buffer_size: BufferSizeInfo::MaximumSize(max_audio_buffer_size),
     };
@@ -311,27 +315,25 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
         let mut audio_in_buffers = Vec::<AudioDeviceBuffer>::new();
         let mut audio_out_buffers = Vec::<AudioDeviceBuffer>::new();
 
-        for internal_device in stream_info.internal_audio_in_devices.iter() {
+        for internal_device in stream_info.audio_in.iter() {
             let mut channels = Vec::<Vec<f32>>::new();
             for _ in 0..internal_device.channels {
                 channels.push(Vec::<f32>::with_capacity(max_audio_buffer_size));
             }
 
             audio_in_buffers.push(AudioDeviceBuffer {
-                id: internal_device.id.clone(),
                 channels,
                 frames: 0,
             });
         }
 
-        for internal_device in stream_info.internal_audio_out_devices.iter() {
+        for internal_device in stream_info.audio_out.iter() {
             let mut channels = Vec::<Vec<f32>>::new();
             for _ in 0..internal_device.channels {
                 channels.push(Vec::<f32>::with_capacity(max_audio_buffer_size));
             }
 
             audio_out_buffers.push(AudioDeviceBuffer {
-                id: internal_device.id.clone(),
                 channels,
                 frames: 0,
             });
@@ -408,7 +410,7 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
                 let len = channel.len().min(out_port_slice.len());
                 if len != audio_frames {
                     println!(
-                        "Warning: An audio output buffer was resized from {} to {} by the user.",
+                        "Warning: An audio output buffer was resized from {} to {} by the user",
                         audio_frames, len
                     );
                 }
