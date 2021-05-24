@@ -1,44 +1,61 @@
 use rusty_daw_io::{
-    AudioDeviceConfig, AudioServerConfig, DeviceInfo, ProcessInfo, RtProcessHandler, StreamInfo,
+    AudioDeviceConfig, AudioServerConfig, ConnectionType, DeviceInfo, MidiDeviceConfig,
+    MidiServerConfig, ProcessInfo, RtProcessHandler, StreamInfo,
 };
 
 fn main() {
     let info = DeviceInfo::new();
 
     dbg!(info.audio_server_info());
-    dbg!(info.midi_server_info());
+    //dbg!(info.midi_server_info());
 
     let audio_config = AudioServerConfig {
         server_name: String::from("Jack"),
-        use_in_devices: vec![
-            AudioDeviceConfig {
-                device_name: String::from("system:capture_1"),
-                use_num_channels: None,
+        use_in_devices: vec![AudioDeviceConfig {
+            id: String::from("default_in"),
+            connection: ConnectionType::SystemPorts {
+                ports: vec![
+                    String::from("system:capture_1"),
+                    String::from("system:capture_2"),
+                ],
             },
-            AudioDeviceConfig {
-                device_name: String::from("system:capture_2"),
-                use_num_channels: None,
+        }],
+        use_out_devices: vec![AudioDeviceConfig {
+            id: String::from("default_out"),
+            connection: ConnectionType::SystemPorts {
+                ports: vec![
+                    String::from("system:playback_1"),
+                    String::from("system:playback_2"),
+                ],
             },
-        ],
-        use_out_devices: vec![
-            AudioDeviceConfig {
-                device_name: String::from("system:playback_1"),
-                use_num_channels: None,
-            },
-            AudioDeviceConfig {
-                device_name: String::from("system:playback_2"),
-                use_num_channels: None,
-            },
-        ],
+        }],
         use_sample_rate: None,
-        use_buffer_size: None,
+        use_max_buffer_size: None,
     };
 
-    let stream_handle =
-        rusty_daw_io::spawn_rt_thread(&audio_config, None, None, MyRtProcessHandler {}, |e| {
+    /*
+    let midi_config = MidiServerConfig {
+        server_name: String::from("Jack"),
+        use_in_devices: vec![MidiDeviceConfig {
+            device_name: String::from("system:midi_capture_2"),
+        }],
+        use_out_devices: vec![MidiDeviceConfig {
+            device_name: String::from("system:midi_playback_2"),
+        }],
+        buffer_size_bytes: 2048,
+    };
+    */
+
+    let stream_handle = rusty_daw_io::spawn_rt_thread(
+        &audio_config,
+        None,
+        Some(String::from("testing")),
+        MyRtProcessHandler {},
+        |e| {
             println!("Fatal stream error: {:?}", e);
-        })
-        .unwrap();
+        },
+    )
+    .unwrap();
 
     dbg!(stream_handle.stream_info());
 

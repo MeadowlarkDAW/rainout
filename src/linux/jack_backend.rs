@@ -1,12 +1,15 @@
+use std::collections::HashSet;
+
 use crate::{
-    AudioDeviceBuffer, AudioDeviceConfig, AudioDeviceInfo, AudioDeviceStreamInfo, AudioServerInfo,
-    BufferSizeInfo, MidiDeviceConfig, MidiDeviceInfo, MidiDeviceStreamInfo, MidiServerInfo,
-    ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    AudioDeviceBuffer, AudioDeviceConfig, AudioServerInfo, BufferSizeInfo, ConnectionType,
+    InternalAudioDeviceInfo, InternalMidiDeviceInfo, MidiDeviceConfig, MidiServerInfo, ProcessInfo,
+    RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo, SystemAudioDeviceInfo,
+    SystemMidiDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
-    server.in_devices.clear();
-    server.out_devices.clear();
+    server.system_in_devices.clear();
+    server.system_out_devices.clear();
 
     match jack::Client::new(
         "rustydaw_io_dummy_client",
@@ -20,30 +23,26 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
             server.buffer_size = BufferSizeInfo::MaximumSize(max_buffer_size);
 
             let system_audio_in_ports: Vec<String> = client.ports(
-                None,
+                Some("system"),
                 Some("32 bit float mono audio"),
                 jack::PortFlags::IS_OUTPUT,
             );
             let system_audio_out_ports: Vec<String> = client.ports(
-                None,
+                Some("system"),
                 Some("32 bit float mono audio"),
                 jack::PortFlags::IS_INPUT,
             );
 
-            for system_audio_in_port in system_audio_in_ports.iter() {
-                server.in_devices.push(AudioDeviceInfo {
-                    name: system_audio_in_port.clone(),
-
-                    min_channels: 1,
-                    max_channels: 1,
+            if system_audio_in_ports.len() > 0 {
+                server.system_in_devices.push(SystemAudioDeviceInfo {
+                    name: String::from("system"),
+                    ports: system_audio_in_ports,
                 });
             }
-            for system_audio_out_port in system_audio_out_ports.iter() {
-                server.out_devices.push(AudioDeviceInfo {
-                    name: system_audio_out_port.clone(),
-
-                    min_channels: 1,
-                    max_channels: 1,
+            if system_audio_out_ports.len() > 0 {
+                server.system_out_devices.push(SystemAudioDeviceInfo {
+                    name: String::from("system"),
+                    ports: system_audio_out_ports,
                 });
             }
 
@@ -58,6 +57,7 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
 }
 
 pub fn refresh_midi_server(server: &mut MidiServerInfo) {
+    /*
     server.in_devices.clear();
     server.out_devices.clear();
 
@@ -89,6 +89,7 @@ pub fn refresh_midi_server(server: &mut MidiServerInfo) {
             server.active = false;
         }
     }
+    */
 }
 
 pub struct JackRtThreadHandle<P: RtProcessHandler, E>
@@ -114,67 +115,127 @@ where
 
     let (client, _status) = jack::Client::new(&client_name, jack::ClientOptions::NO_START_SERVER)?;
 
+    // Register new ports.
+
     let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
     let mut audio_in_port_names = Vec::<String>::new();
-    let mut audio_in_stream_info = Vec::<AudioDeviceStreamInfo>::new();
-    let mut audio_in_port_connections = Vec::<String>::new();
+    let mut audio_in_connected_port_names = Vec::<Option<String>>::new();
+    let mut internal_audio_in_devices = Vec::<InternalAudioDeviceInfo>::new();
     for audio_device in audio_in_device_config.iter() {
-        let port = client.register_port(&audio_device.device_name, jack::AudioIn::default())?;
-        audio_in_port_names.push(port.name()?);
-        audio_in_ports.push(port);
-        audio_in_stream_info.push(AudioDeviceStreamInfo {
-            name: audio_device.device_name.clone(),
-            channels: 1,
-        });
-        audio_in_port_connections.push(audio_device.device_name.clone());
+        // See if device wants to be connected to a system device.
+        match &audio_device.connection {
+            ConnectionType::SystemPorts { ports } => {
+                if ports.len() == 0 {
+                    return Err(SpawnRtThreadError::NoSystemPortsGiven(
+                        audio_device.id.clone(),
+                    ));
+                }
+
+                internal_audio_in_devices.push(InternalAudioDeviceInfo {
+                    id: audio_device.id.clone(),
+                    connection: audio_device.connection.clone(),
+                    channels: ports.len() as u16,
+                });
+
+                for (i, system_port_name) in ports.iter().enumerate() {
+                    let port_name = format!("{}_{}", &audio_device.id, i + 1);
+                    let port = client.register_port(&port_name, jack::AudioIn::default())?;
+
+                    audio_in_port_names.push(port.name()?);
+                    audio_in_connected_port_names.push(Some(system_port_name.clone()));
+                    audio_in_ports.push(port);
+                }
+            }
+            ConnectionType::Virtual { channels } => {
+                if *channels == 0 {
+                    return Err(SpawnRtThreadError::EmptyVirtualDevice(
+                        audio_device.id.clone(),
+                    ));
+                }
+
+                internal_audio_in_devices.push(InternalAudioDeviceInfo {
+                    id: audio_device.id.clone(),
+                    connection: audio_device.connection.clone(),
+                    channels: *channels,
+                });
+
+                for i in 0..*channels {
+                    let port_name = format!("{}_{}", &audio_device.id, i + 1);
+                    let port = client.register_port(&port_name, jack::AudioIn::default())?;
+
+                    audio_in_port_names.push(port.name()?);
+                    audio_in_connected_port_names.push(None);
+                    audio_in_ports.push(port);
+                }
+            }
+        }
     }
 
     let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
     let mut audio_out_port_names = Vec::<String>::new();
-    let mut audio_out_stream_info = Vec::<AudioDeviceStreamInfo>::new();
-    let mut audio_out_port_connections = Vec::<String>::new();
+    let mut audio_out_connected_port_names = Vec::<Option<String>>::new();
+    let mut internal_audio_out_devices = Vec::<InternalAudioDeviceInfo>::new();
     for audio_device in audio_out_device_config.iter() {
-        let port = client.register_port(&audio_device.device_name, jack::AudioOut::default())?;
-        audio_out_port_names.push(port.name()?);
-        audio_out_ports.push(port);
-        audio_out_stream_info.push(AudioDeviceStreamInfo {
-            name: audio_device.device_name.clone(),
-            channels: 1,
-        });
-        audio_out_port_connections.push(audio_device.device_name.clone());
+        // See if device wants to be connected to a system device.
+        match &audio_device.connection {
+            ConnectionType::SystemPorts { ports } => {
+                if ports.len() == 0 {
+                    return Err(SpawnRtThreadError::NoSystemPortsGiven(
+                        audio_device.id.clone(),
+                    ));
+                }
+
+                internal_audio_out_devices.push(InternalAudioDeviceInfo {
+                    id: audio_device.id.clone(),
+                    connection: audio_device.connection.clone(),
+                    channels: ports.len() as u16,
+                });
+
+                for (i, system_port_name) in ports.iter().enumerate() {
+                    let port_name = format!("{}_{}", &audio_device.id, i + 1);
+                    let port = client.register_port(&port_name, jack::AudioOut::default())?;
+
+                    audio_out_port_names.push(port.name()?);
+                    audio_out_connected_port_names.push(Some(system_port_name.clone()));
+                    audio_out_ports.push(port);
+                }
+            }
+            ConnectionType::Virtual { channels } => {
+                if *channels == 0 {
+                    return Err(SpawnRtThreadError::EmptyVirtualDevice(
+                        audio_device.id.clone(),
+                    ));
+                }
+
+                internal_audio_out_devices.push(InternalAudioDeviceInfo {
+                    id: audio_device.id.clone(),
+                    connection: audio_device.connection.clone(),
+                    channels: *channels,
+                });
+
+                for i in 0..*channels {
+                    let port_name = format!("{}_{}", &audio_device.id, i + 1);
+                    let port = client.register_port(&port_name, jack::AudioOut::default())?;
+
+                    audio_out_port_names.push(port.name()?);
+                    audio_out_connected_port_names.push(None);
+                    audio_out_ports.push(port);
+                }
+            }
+        }
     }
 
-    let sample_rate = client.sample_rate();
-    let max_buffer_size = client.buffer_size();
-
-    let mut midi_in_ports = Vec::<jack::Port<jack::MidiIn>>::new();
-    let mut midi_in_stream_info = Vec::<MidiDeviceStreamInfo>::new();
-    for midi_device in midi_in_device_config.iter() {
-        let port = client.register_port(&midi_device.device_name, jack::MidiIn::default())?;
-        midi_in_ports.push(port);
-        midi_in_stream_info.push(MidiDeviceStreamInfo {
-            name: midi_device.device_name.clone(),
-        });
-    }
-
-    let mut midi_out_ports = Vec::<jack::Port<jack::MidiOut>>::new();
-    let mut midi_out_stream_info = Vec::<MidiDeviceStreamInfo>::new();
-    for midi_device in midi_out_device_config.iter() {
-        let port = client.register_port(&midi_device.device_name, jack::MidiOut::default())?;
-        midi_out_ports.push(port);
-        midi_out_stream_info.push(MidiDeviceStreamInfo {
-            name: midi_device.device_name.clone(),
-        });
-    }
+    let sample_rate = client.sample_rate() as u32;
+    let max_audio_buffer_size = client.buffer_size() as u32;
 
     let stream_info = StreamInfo {
         server_name: String::from("Jack"),
-        audio_in_devices: audio_in_stream_info,
-        audio_out_devices: audio_out_stream_info,
-        midi_in_devices: midi_in_stream_info,
-        midi_out_devices: midi_out_stream_info,
+        internal_audio_in_devices,
+        internal_audio_out_devices,
+        internal_midi_in_devices: vec![],
+        internal_midi_out_devices: vec![],
         sample_rate: sample_rate as u32,
-        audio_buffer_size: BufferSizeInfo::MaximumSize(max_buffer_size),
+        audio_buffer_size: BufferSizeInfo::MaximumSize(max_audio_buffer_size),
     };
 
     rt_process_handler.init(&stream_info);
@@ -183,8 +244,8 @@ where
         rt_process_handler,
         audio_in_ports,
         audio_out_ports,
-        &stream_info,
-        max_buffer_size,
+        stream_info.clone(),
+        max_audio_buffer_size as usize,
     );
 
     // Activate the client, which starts the processing.
@@ -197,45 +258,24 @@ where
 
     // Try to automatically connect to system inputs/outputs.
 
-    let system_audio_in_ports: Vec<String> = async_client.as_client().ports(
-        None,
-        Some("32 bit float mono audio"),
-        jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_OUTPUT,
-    );
-    let system_audio_out_ports: Vec<String> = async_client.as_client().ports(
-        None,
-        Some("32 bit float mono audio"),
-        jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
-    );
-
-    let system_midi_in_ports: Vec<String> =
-        async_client
-            .as_client()
-            .ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_OUTPUT);
-    let system_midi_out_ports: Vec<String> =
-        async_client
-            .as_client()
-            .ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_INPUT);
-
-    // Ports will be in the correct order.
-    for (in_port, wanted_in_port) in audio_in_port_names
+    for (in_port, system_in_port) in audio_in_port_names
         .iter()
-        .zip(audio_in_port_connections.iter())
+        .zip(audio_in_connected_port_names)
     {
-        if system_audio_in_ports.contains(wanted_in_port) {
+        if let Some(system_in_port) = &system_in_port {
             async_client
                 .as_client()
-                .connect_ports_by_name(wanted_in_port, in_port)?;
+                .connect_ports_by_name(system_in_port, in_port)?;
         }
     }
-    for (out_port, wanted_out_port) in audio_out_port_names
+    for (out_port, system_out_port) in audio_out_port_names
         .iter()
-        .zip(audio_out_port_connections.iter())
+        .zip(audio_out_connected_port_names)
     {
-        if system_audio_out_ports.contains(wanted_out_port) {
+        if let Some(system_out_port) = &system_out_port {
             async_client
                 .as_client()
-                .connect_ports_by_name(out_port, wanted_out_port)?;
+                .connect_ports_by_name(out_port, system_out_port)?;
         }
     }
 
@@ -256,7 +296,8 @@ struct JackProcessHandler<P: RtProcessHandler> {
     audio_in_buffers: Vec<AudioDeviceBuffer>,
     audio_out_buffers: Vec<AudioDeviceBuffer>,
 
-    sample_rate: u32,
+    stream_info: StreamInfo,
+    max_audio_buffer_size: usize,
 }
 
 impl<P: RtProcessHandler> JackProcessHandler<P> {
@@ -264,23 +305,34 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
         rt_process_handler: P,
         audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
         audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
-        stream_info: &StreamInfo,
-        max_buffer_size: u32,
+        stream_info: StreamInfo,
+        max_audio_buffer_size: usize,
     ) -> Self {
         let mut audio_in_buffers = Vec::<AudioDeviceBuffer>::new();
-        for audio_device in stream_info.audio_in_devices.iter() {
+        let mut audio_out_buffers = Vec::<AudioDeviceBuffer>::new();
+
+        for internal_device in stream_info.internal_audio_in_devices.iter() {
+            let mut channels = Vec::<Vec<f32>>::new();
+            for _ in 0..internal_device.channels {
+                channels.push(Vec::<f32>::with_capacity(max_audio_buffer_size));
+            }
+
             audio_in_buffers.push(AudioDeviceBuffer {
-                device_name: audio_device.name.clone(),
-                buffers: vec![Vec::with_capacity(max_buffer_size as usize)],
+                id: internal_device.id.clone(),
+                channels,
                 frames: 0,
             });
         }
 
-        let mut audio_out_buffers = Vec::<AudioDeviceBuffer>::new();
-        for audio_device in stream_info.audio_out_devices.iter() {
+        for internal_device in stream_info.internal_audio_out_devices.iter() {
+            let mut channels = Vec::<Vec<f32>>::new();
+            for _ in 0..internal_device.channels {
+                channels.push(Vec::<f32>::with_capacity(max_audio_buffer_size));
+            }
+
             audio_out_buffers.push(AudioDeviceBuffer {
-                device_name: audio_device.name.clone(),
-                buffers: vec![Vec::with_capacity(max_buffer_size as usize)],
+                id: internal_device.id.clone(),
+                channels,
                 frames: 0,
             });
         }
@@ -291,7 +343,8 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
             audio_out_ports,
             audio_in_buffers,
             audio_out_buffers,
-            sample_rate: stream_info.sample_rate,
+            stream_info,
+            max_audio_buffer_size,
         }
     }
 }
@@ -300,63 +353,70 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let mut audio_frames = 0;
 
-        // Ports should be in order. Jack devices only have one channel each.
-        for (in_port, in_device) in self
-            .audio_in_ports
-            .iter()
-            .zip(self.audio_in_buffers.iter_mut())
-        {
-            let in_slice = in_port.as_slice(ps);
-            audio_frames = in_slice.len();
+        // Copy all inputs into buffers.
+        let mut in_port = 0; // Ports are in order.
+        for in_device_buffer in self.audio_in_buffers.iter_mut() {
+            for channel in in_device_buffer.channels.iter_mut() {
+                let in_port_slice = self.audio_in_ports[in_port].as_slice(ps);
 
-            // Jack devices only have one channel each.
-            let buffer = &mut in_device.buffers[0];
+                audio_frames = in_port_slice.len();
 
-            // This in theory will never actually allocate more memory because the vec
-            // was preallocated with the maximum buffer size that jack will send.
-            buffer.resize(in_slice.len(), 0.0);
-            buffer.copy_from_slice(in_slice);
+                // Sanity check.
+                if audio_frames > self.max_audio_buffer_size {
+                    println!("Warning: Jack sent a buffer size of {} when the max buffer size was said to be {}", audio_frames, self.max_audio_buffer_size);
+                }
+
+                // The compiler should in-theory optimize by not filling in zeros before copying
+                // the slice. This should never allocate because each buffer was given a capacity of
+                // the maximum buffer size that jack will send.
+                channel.resize(audio_frames, 0.0);
+                channel.copy_from_slice(in_port_slice);
+
+                in_port += 1;
+            }
+
+            in_device_buffer.frames = audio_frames;
         }
 
-        if self.audio_in_ports.len() == 0 {
-            // No input channels, check output for audio_frames instead.
+        if self.audio_in_buffers.len() == 0 {
+            // Check outputs for number of frames instead.
             if let Some(out_port) = self.audio_out_ports.first_mut() {
                 audio_frames = out_port.as_mut_slice(ps).len();
             }
         }
 
-        // Clear output buffers with zeros.
-        for out_device in self.audio_out_buffers.iter_mut() {
-            for channel in out_device.buffers_mut().iter_mut() {
-                channel.clear();
-                channel.resize(audio_frames, 0.0);
-            }
+        // Clear all output buffers to zeros.
+        for out_device_buffer in self.audio_out_buffers.iter_mut() {
+            out_device_buffer.clear_and_resize(audio_frames);
         }
 
         self.rt_process_handler.process(ProcessInfo {
-            audio_in: &self.audio_in_buffers,
-            audio_out: &mut self.audio_out_buffers,
+            audio_in: self.audio_in_buffers.as_slice(),
+            audio_out: self.audio_out_buffers.as_mut_slice(),
             audio_frames,
 
-            sample_rate: self.sample_rate,
+            sample_rate: self.stream_info.sample_rate,
         });
 
-        // Ports should be in order. Jack devices only have one channel each.
+        // Copy new data to outputs.
+        let mut out_port = 0; // Ports are in order.
+        for out_device_buffer in self.audio_out_buffers.iter() {
+            for channel in out_device_buffer.channels.iter() {
+                let out_port_slice = self.audio_out_ports[out_port].as_mut_slice(ps);
 
-        for (out_port, out_device) in self
-            .audio_out_ports
-            .iter_mut()
-            .zip(self.audio_out_buffers.iter())
-        {
-            let out_slice = out_port.as_mut_slice(ps);
+                // Just in case the user resized the output buffer for some reason.
+                let len = channel.len().min(out_port_slice.len());
+                if len != audio_frames {
+                    println!(
+                        "Warning: An audio output buffer was resized from {} to {} by the user.",
+                        audio_frames, len
+                    );
+                }
 
-            // Jack devices only have one channel each.
-            let buffer = &out_device.buffers[0];
+                &mut out_port_slice[0..len].copy_from_slice(&channel[0..len]);
 
-            // Just in case the user for some reason resized the output buffer.
-            let len = buffer.len().min(out_slice.len());
-
-            &mut out_slice[0..len].copy_from_slice(buffer.as_slice());
+                out_port += 1;
+            }
         }
 
         jack::Control::Continue

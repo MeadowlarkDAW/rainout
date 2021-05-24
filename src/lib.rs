@@ -14,19 +14,17 @@ pub enum BufferSizeInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioDeviceInfo {
+pub struct SystemAudioDeviceInfo {
     pub name: String,
-
-    pub min_channels: u16,
-    pub max_channels: u16,
+    pub ports: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub in_devices: Vec<AudioDeviceInfo>,
-    pub out_devices: Vec<AudioDeviceInfo>,
+    pub system_in_devices: Vec<SystemAudioDeviceInfo>,
+    pub system_out_devices: Vec<SystemAudioDeviceInfo>,
     pub sample_rates: Vec<u32>,
     pub buffer_size: BufferSizeInfo,
     pub active: bool,
@@ -37,8 +35,8 @@ impl AudioServerInfo {
         Self {
             name,
             version,
-            in_devices: Vec::new(),
-            out_devices: Vec::new(),
+            system_in_devices: Vec::new(),
+            system_out_devices: Vec::new(),
             sample_rates: Vec::new(),
             buffer_size: BufferSizeInfo::UnknownSize,
             active: false,
@@ -47,53 +45,78 @@ impl AudioServerInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MidiDeviceInfo {
+pub struct SystemMidiDeviceInfo {
     pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MidiServerInfo {
-    pub name: String,
-    pub version: Option<String>,
-    pub in_devices: Vec<MidiDeviceInfo>,
-    pub out_devices: Vec<MidiDeviceInfo>,
-    pub active: bool,
+    pub system_in_devices: Vec<SystemMidiDeviceInfo>,
+    pub system_out_devices: Vec<SystemMidiDeviceInfo>,
 }
 
-impl MidiServerInfo {
-    pub(crate) fn new(name: String, version: Option<String>) -> Self {
-        Self {
-            name,
-            version,
-            in_devices: Vec::new(),
-            out_devices: Vec::new(),
-            active: false,
-        }
-    }
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ConnectionType {
+    SystemPorts { ports: Vec<String> },
+    Virtual { channels: u16 },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioDeviceConfig {
-    pub device_name: String,
-    pub use_num_channels: Option<u16>,
-}
+    /// The ID to use for this device. This ID is for the "internal" device that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the name of the actual
+    /// system hardware device that this "internal" device is connected to.
+    ///
+    /// This ID *must* be unique for each `AudioDeviceConfig` and `MidiDeviceConfig`.
+    ///
+    /// Examples of IDs can include:
+    ///
+    /// * Realtek Device In
+    /// * Drums Mic
+    /// * Headphones Out
+    /// * Speakers Out
+    pub id: String,
 
-impl Default for AudioDeviceConfig {
-    fn default() -> Self {
-        Self {
-            device_name: String::new(),
-            use_num_channels: None,
-        }
-    }
+    /// How this device will be connected.
+    pub connection: ConnectionType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioServerConfig {
+    /// The name of the audio server to use.
     pub server_name: String,
+
+    /// The audio input devices to create/use. These devices are the "internal" devices that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the actual
+    /// system hardware devices that these "internal" devices are connected to.
+    ///
+    /// Examples of device IDs can include:
+    ///
+    /// * Realtek Device In
+    /// * Built-In Mic
+    /// * Drums Mic
     pub use_in_devices: Vec<AudioDeviceConfig>,
+
+    /// The audio output devices to create/use. These devices are the "internal" devices that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the actual
+    /// system hardware devices that these "internal" devices are connected to.
+    ///
+    /// Examples of IDs can include:
+    ///
+    /// * Realtek Device Stereo Out
+    /// * Headphones Out
+    /// * Speakers Out
     pub use_out_devices: Vec<AudioDeviceConfig>,
+
+    /// The sample rate to use.
+    ///
+    /// Set this to `None` to use the default sample-rate of the audio server.
     pub use_sample_rate: Option<u32>,
-    pub use_buffer_size: Option<u32>,
+
+    /// The maximum number of frames per channel.
+    ///
+    /// Set this to `None` to use the default settings of the audio server.
+    pub use_max_buffer_size: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -103,29 +126,45 @@ pub struct MidiDeviceConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MidiServerConfig {
-    pub server_name: String,
     pub use_in_devices: Vec<MidiDeviceConfig>,
     pub use_out_devices: Vec<MidiDeviceConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioDeviceStreamInfo {
-    pub name: String,
+pub struct InternalAudioDeviceInfo {
+    /// The ID of this device. This ID is for the "internal" device that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the name of the actual
+    /// system hardware device that this "internal" device is connected to.
+    ///
+    /// This ID is unique for every `AudioDeviceConfig` and `MidiDeviceConfig`.
+    ///
+    /// Examples of IDs can include:
+    ///
+    /// * Realtek Device In
+    /// * Drums Mic
+    /// * Headphones Out
+    /// * Speakers Out
+    pub id: String,
+
+    /// The type of connection.
+    pub connection: ConnectionType,
+
+    /// The number of channels in this device.
     pub channels: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MidiDeviceStreamInfo {
-    pub name: String,
+pub struct InternalMidiDeviceInfo {
+    pub id: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamInfo {
     pub server_name: String,
-    pub audio_in_devices: Vec<AudioDeviceStreamInfo>,
-    pub audio_out_devices: Vec<AudioDeviceStreamInfo>,
-    pub midi_in_devices: Vec<MidiDeviceStreamInfo>,
-    pub midi_out_devices: Vec<MidiDeviceStreamInfo>,
+    pub internal_audio_in_devices: Vec<InternalAudioDeviceInfo>,
+    pub internal_audio_out_devices: Vec<InternalAudioDeviceInfo>,
+    pub internal_midi_in_devices: Vec<InternalMidiDeviceInfo>,
+    pub internal_midi_out_devices: Vec<InternalMidiDeviceInfo>,
     pub sample_rate: u32,
     pub audio_buffer_size: BufferSizeInfo,
 }
@@ -138,35 +177,50 @@ pub trait RtProcessHandler: 'static + Send + Sized {
     fn process(&mut self, proc_info: ProcessInfo);
 }
 
+#[derive(Debug)]
 pub struct AudioDeviceBuffer {
-    pub(crate) device_name: String,
-    pub(crate) buffers: Vec<Vec<f32>>,
+    pub(crate) id: String,
+    pub(crate) channels: Vec<Vec<f32>>,
     pub(crate) frames: usize,
 }
 
 impl AudioDeviceBuffer {
-    pub fn device_name(&self) -> &String {
-        &self.device_name
+    pub(crate) fn clear_and_resize(&mut self, frames: usize) {
+        for channel in self.channels.iter_mut() {
+            channel.clear();
+
+            // This should never allocate because each buffer was given a capacity of
+            // the maximum buffer size that the audio server will send.
+            channel.resize(frames, 0.0);
+        }
+
+        self.frames = frames;
+    }
+}
+
+impl AudioDeviceBuffer {
+    pub fn id(&self) -> &String {
+        &self.id
     }
 
     pub fn get(&self, channel: usize) -> Option<&[f32]> {
-        self.buffers.get(channel).map(|b| b.as_slice())
+        self.channels.get(channel).map(|c| c.as_slice())
     }
 
     pub fn get_mut(&mut self, channel: usize) -> Option<&mut [f32]> {
-        self.buffers.get_mut(channel).map(|b| b.as_mut_slice())
+        self.channels.get_mut(channel).map(|c| c.as_mut_slice())
     }
 
-    pub fn buffers(&self) -> &[Vec<f32>] {
-        self.buffers.as_slice()
+    pub fn channels(&self) -> &[Vec<f32>] {
+        self.channels.as_slice()
     }
 
-    pub fn buffers_mut(&mut self) -> &mut [Vec<f32>] {
-        self.buffers.as_mut_slice()
+    pub fn channels_mut(&mut self) -> &mut [Vec<f32>] {
+        self.channels.as_mut_slice()
     }
 
-    pub fn channels(&self) -> usize {
-        self.buffers.len()
+    pub fn num_channels(&self) -> usize {
+        self.channels.len()
     }
 
     pub fn frames(&self) -> usize {
@@ -178,26 +232,15 @@ impl std::ops::Index<usize> for AudioDeviceBuffer {
     type Output = [f32];
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.buffers[index].as_slice()
+        self.channels[index].as_slice()
     }
 }
 impl std::ops::IndexMut<usize> for AudioDeviceBuffer {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.buffers[index].as_mut_slice()
+        self.channels[index].as_mut_slice()
     }
 }
 
-impl std::fmt::Debug for AudioDeviceBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AudioDeviceBuffers")
-            .field("device_name", &self.device_name)
-            .field("channels", &self.buffers.len())
-            .field("frames", &self.frames)
-            .finish()
-    }
-}
-
-#[derive(Debug)]
 pub struct ProcessInfo<'a> {
     pub audio_in: &'a [AudioDeviceBuffer],
     pub audio_out: &'a mut [AudioDeviceBuffer],
@@ -207,23 +250,14 @@ pub struct ProcessInfo<'a> {
     // TODO: MIDI IO
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EstimatedLatency {
-    pub frames: u32,
-    pub sample_rate: u32,
-}
-
-impl EstimatedLatency {
-    pub fn as_duration(&self) -> std::time::Duration {
-        std::time::Duration::from_secs_f64(f64::from(self.frames) / f64::from(self.sample_rate))
-    }
-}
-
 #[derive(Debug)]
 pub enum SpawnRtThreadError {
     AudioServerUnavailable(String),
-    AudioDeviceNotFoundInServer(String, String),
-    NoAudioDeviceSelected(String),
+    SystemPortNotFound(String),
+    VirtualDevicesNotSupported(String),
+    NoSystemPortsGiven(String),
+    EmptyVirtualDevice(String),
+    DeviceIdNotUnique(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
 }
 
@@ -235,27 +269,47 @@ impl std::fmt::Display for SpawnRtThreadError {
             SpawnRtThreadError::AudioServerUnavailable(server) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The audio sever is unavailable: {:?}.",
+                    "Error spawning rt thread: The audio sever is unavailable: {}.",
                     server
                 )
             }
-            SpawnRtThreadError::AudioDeviceNotFoundInServer(device, server) => {
+            SpawnRtThreadError::SystemPortNotFound(port) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The audio device {:?} was not found in the audio server {:?}.",
-                    device,
-                    server
+                    "Error spawning rt thread: The system port {} could not be found",
+                    port,
                 )
             }
-            SpawnRtThreadError::NoAudioDeviceSelected(server) => {
+            SpawnRtThreadError::VirtualDevicesNotSupported(server) => {
                 write!(
                     f,
-                    "Error spawning rt thread: No audio device was selected for server {:?}.",
-                    server
+                    "Error spawning rt thread: Virtual devices are not supported in the audio server {}",
+                    server,
+                )
+            }
+            SpawnRtThreadError::NoSystemPortsGiven(id) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: No system ports were set for the device with id {}",
+                    id,
+                )
+            }
+            SpawnRtThreadError::EmptyVirtualDevice(id) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: The virtual device with id {} must not have 0 channels.",
+                    id,
+                )
+            }
+            SpawnRtThreadError::DeviceIdNotUnique(id) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: Two or more devices have the same id {}",
+                    id,
                 )
             }
             SpawnRtThreadError::PlatformSpecific(e) => {
-                write!(f, "Error spawning rt thread: Platform error: {:?}", e)
+                write!(f, "Error spawning rt thread: Platform error: {}", e)
             }
         }
     }
@@ -276,19 +330,19 @@ impl std::fmt::Display for StreamError {
             StreamError::AudioServerDisconnected(server) => {
                 write!(
                     f,
-                    "Stream error: The audio sever was disconnected: {:?}.",
+                    "Stream error: The audio sever was disconnected: {}.",
                     server
                 )
             }
             StreamError::AudioDeviceDisconnected(device) => {
                 write!(
                     f,
-                    "Stream error: The audio device was disconnected: {:?}.",
+                    "Stream error: The audio device was disconnected: {}.",
                     device
                 )
             }
             StreamError::PlatformSpecific(e) => {
-                write!(f, "Stream error: Platform error: {:?}", e)
+                write!(f, "Stream error: Platform error: {}", e)
             }
         }
     }
