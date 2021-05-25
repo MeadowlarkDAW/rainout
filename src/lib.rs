@@ -57,6 +57,7 @@ pub struct MidiServerInfo {
     pub name: String,
     pub system_in_devices: Vec<SystemMidiDeviceInfo>,
     pub system_out_devices: Vec<SystemMidiDeviceInfo>,
+    pub active: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

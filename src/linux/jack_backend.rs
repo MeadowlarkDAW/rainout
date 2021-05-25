@@ -1,8 +1,21 @@
 use crate::{
     AudioDeviceBuffer, AudioDeviceConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
-    InternalAudioDevice, InternalMidiDevice, MidiDeviceConfig, MidiServerConfig, ProcessInfo,
-    RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo, SystemAudioDeviceInfo,
+    InternalAudioDevice, InternalMidiDevice, MidiDeviceConfig, MidiServerConfig, MidiServerInfo,
+    ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    SystemAudioDeviceInfo,
 };
+
+fn extract_device_name(port_name: &String) -> String {
+    let mut i = 0;
+    for c in port_name.chars() {
+        i += 1;
+        if c == ':' {
+            break;
+        }
+    }
+
+    String::from(&port_name[0..i])
+}
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
     server.system_in_devices.clear();
@@ -20,27 +33,54 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
             server.buffer_size = BufferSizeInfo::MaximumSize(max_buffer_size);
 
             let system_audio_in_ports: Vec<String> = client.ports(
-                Some("system"),
+                None,
                 Some("32 bit float mono audio"),
                 jack::PortFlags::IS_OUTPUT,
             );
             let system_audio_out_ports: Vec<String> = client.ports(
-                Some("system"),
+                None,
                 Some("32 bit float mono audio"),
                 jack::PortFlags::IS_INPUT,
             );
 
-            if system_audio_in_ports.len() > 0 {
-                server.system_in_devices.push(SystemAudioDeviceInfo {
-                    name: String::from("system"),
-                    ports: system_audio_in_ports,
-                });
+            for system_port_name in system_audio_in_ports.iter() {
+                let system_device_name = extract_device_name(system_port_name);
+
+                let mut create_device = true;
+                for system_device in server.system_in_devices.iter_mut() {
+                    if &system_device.name == &system_device_name {
+                        system_device.ports.push(system_port_name.clone());
+                        create_device = false;
+                        break;
+                    }
+                }
+
+                if create_device {
+                    server.system_in_devices.push(SystemAudioDeviceInfo {
+                        name: system_device_name.clone(),
+                        ports: vec![system_port_name.clone()],
+                    })
+                }
             }
-            if system_audio_out_ports.len() > 0 {
-                server.system_out_devices.push(SystemAudioDeviceInfo {
-                    name: String::from("system"),
-                    ports: system_audio_out_ports,
-                });
+
+            for system_port_name in system_audio_out_ports.iter() {
+                let system_device_name = extract_device_name(system_port_name);
+
+                let mut create_device = true;
+                for system_device in server.system_out_devices.iter_mut() {
+                    if &system_device.name == &system_device_name {
+                        system_device.ports.push(system_port_name.clone());
+                        create_device = false;
+                        break;
+                    }
+                }
+
+                if create_device {
+                    server.system_out_devices.push(SystemAudioDeviceInfo {
+                        name: system_device_name.clone(),
+                        ports: vec![system_port_name.clone()],
+                    })
+                }
             }
 
             server.active = true;
@@ -48,6 +88,28 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
         Err(_) => {
             server.sample_rates.clear();
             server.buffer_size = BufferSizeInfo::UnknownSize;
+            server.active = false;
+        }
+    }
+}
+
+pub fn refresh_midi_server(server: &mut MidiServerInfo) {
+    server.system_in_devices.clear();
+    server.system_out_devices.clear();
+
+    match jack::Client::new(
+        "rustydaw_io_dummy_client",
+        jack::ClientOptions::NO_START_SERVER,
+    ) {
+        Ok((client, _status)) => {
+            let system_midi_in_ports: Vec<String> =
+                client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_OUTPUT);
+            let system_midi_out_ports: Vec<String> =
+                client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_INPUT);
+
+            server.active = true;
+        }
+        Err(_) => {
             server.active = false;
         }
     }

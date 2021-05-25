@@ -37,6 +37,7 @@ impl DeviceInfo {
                 name: String::from("Jack"),
                 system_in_devices: Vec::new(),
                 system_out_devices: Vec::new(),
+                active: false,
             },
         };
 
