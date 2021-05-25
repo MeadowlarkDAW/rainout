@@ -7,7 +7,7 @@ fn main() {
     let info = DeviceInfo::new();
 
     dbg!(info.audio_servers_info());
-    dbg!(info.midi_server_info());
+    dbg!(info.midi_servers_info());
 
     let audio_config = AudioServerConfig {
         server_name: String::from("Jack"),

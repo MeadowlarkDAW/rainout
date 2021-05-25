@@ -2,7 +2,7 @@ use crate::{
     AudioDeviceBuffer, AudioDeviceConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
     InternalAudioDevice, InternalMidiDevice, MidiDeviceConfig, MidiServerConfig, MidiServerInfo,
     ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
-    SystemAudioDeviceInfo,
+    SystemAudioDeviceInfo, SystemMidiDeviceInfo,
 };
 
 fn extract_device_name(port_name: &String) -> String {
@@ -106,6 +106,17 @@ pub fn refresh_midi_server(server: &mut MidiServerInfo) {
                 client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_OUTPUT);
             let system_midi_out_ports: Vec<String> =
                 client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_INPUT);
+
+            for system_port_name in system_midi_in_ports.iter() {
+                server.system_in_devices.push(SystemMidiDeviceInfo {
+                    name: system_port_name.clone(),
+                });
+            }
+            for system_port_name in system_midi_out_ports.iter() {
+                server.system_out_devices.push(SystemMidiDeviceInfo {
+                    name: system_port_name.clone(),
+                });
+            }
 
             server.active = true;
         }

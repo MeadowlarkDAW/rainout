@@ -24,7 +24,7 @@ where
 
 pub struct DeviceInfo {
     audio_servers_info: [AudioServerInfo; 1],
-    midi_server_info: MidiServerInfo,
+    midi_servers_info: [MidiServerInfo; 1],
 }
 
 impl DeviceInfo {
@@ -33,12 +33,12 @@ impl DeviceInfo {
             audio_servers_info: [
                 AudioServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
             ],
-            midi_server_info: MidiServerInfo {
+            midi_servers_info: [MidiServerInfo {
                 name: String::from("Jack"),
                 system_in_devices: Vec::new(),
                 system_out_devices: Vec::new(),
                 active: false,
-            },
+            }],
         };
 
         new_self.refresh_audio_servers();
@@ -53,18 +53,16 @@ impl DeviceInfo {
     }
 
     pub fn refresh_midi_servers(&mut self) {
-        // Using midir for midi.
-
-        self.midi_server_info.system_in_devices.clear();
-        self.midi_server_info.system_out_devices.clear();
+        // First server is Jack
+        jack_backend::refresh_midi_server(&mut self.midi_servers_info[0]);
     }
 
     pub fn audio_servers_info(&self) -> &[AudioServerInfo] {
         &self.audio_servers_info
     }
 
-    pub fn midi_server_info(&self) -> &MidiServerInfo {
-        &self.midi_server_info
+    pub fn midi_servers_info(&self) -> &[MidiServerInfo] {
+        &self.midi_servers_info
     }
 }
 
