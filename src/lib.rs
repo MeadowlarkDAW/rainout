@@ -6,6 +6,9 @@ pub mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
+pub const MAX_MIDI_MESSAGES: usize = 2048;
+pub const MAX_MIDI_MSG_SIZE: usize = 3;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferSizeInfo {
     MaximumSize(u32),
@@ -51,14 +54,9 @@ pub struct SystemMidiDeviceInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MidiServerInfo {
+    pub name: String,
     pub system_in_devices: Vec<SystemMidiDeviceInfo>,
     pub system_out_devices: Vec<SystemMidiDeviceInfo>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum ConnectionType {
-    SystemPorts { ports: Vec<String> },
-    Virtual { channels: u16 },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -77,8 +75,8 @@ pub struct AudioDeviceConfig {
     /// * Speakers Out
     pub id: String,
 
-    /// How this device will be connected.
-    pub connection: ConnectionType,
+    /// The names of the system ports this device is connected to.
+    pub system_ports: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -121,12 +119,30 @@ pub struct AudioServerConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MidiDeviceConfig {
-    pub device_name: String,
+    /// The ID to use for this device. This ID is for the "internal" device that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the name of the actual
+    /// system hardware device that this "internal" device is connected to.
+    ///
+    /// This ID *must* be unique for each `AudioDeviceConfig` and `MidiDeviceConfig`.
+    pub id: String,
+
+    /// The name of the system port this device is connected to.
+    pub system_port: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MidiServerConfig {
+    /// The name of the audio server to use.
+    pub server_name: String,
+
+    /// The midi input devices to create/use. These devices are the "internal" devices that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the actual
+    /// system hardware devices that these "internal" devices are connected to.
     pub use_in_devices: Vec<MidiDeviceConfig>,
+
+    /// The midi output devices to create/use. These devices are the "internal" devices that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the actual
+    /// system hardware devices that these "internal" devices are connected to.
     pub use_out_devices: Vec<MidiDeviceConfig>,
 }
 
@@ -163,8 +179,8 @@ pub struct InternalAudioDevice {
     /// to the realtime thread for communication on what device to use.
     pub id_index: DeviceIndex,
 
-    /// The type of connection.
-    pub connection: ConnectionType,
+    /// The names of the system ports this device is connected to.
+    pub system_ports: Vec<String>,
 
     /// The number of channels in this device.
     pub channels: u16,
@@ -182,6 +198,9 @@ pub struct InternalMidiDevice {
     /// The index were this device appears in the realtime thread's buffers. This is what should actually be sent
     /// to the realtime thread for communication on which device to use.
     pub id_index: DeviceIndex,
+
+    /// The name of the system port this device is connected to.
+    pub system_port: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -262,10 +281,61 @@ impl std::ops::IndexMut<usize> for AudioDeviceBuffer {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MidiMessage {
+    pub timestamp: u64,
+    message_buffer: [u8; MAX_MIDI_MSG_SIZE],
+    message_bytes: u8,
+}
+
+impl MidiMessage {
+    pub(crate) fn new(timestamp: u64, message: &[u8]) -> Option<Self> {
+        if message.len() <= MAX_MIDI_MSG_SIZE {
+            let mut message_buffer = [0; MAX_MIDI_MSG_SIZE];
+            &mut message_buffer[0..message.len()].copy_from_slice(message);
+
+            Some(Self {
+                timestamp,
+                message_buffer,
+                message_bytes: message.len() as u8,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn message(&self) -> &[u8] {
+        &self.message_buffer[0..usize::from(self.message_bytes)]
+    }
+}
+
+#[derive(Debug)]
+pub struct MidiDeviceBuffer {
+    pub messages: Vec<MidiMessage>,
+    process_timestamp: u64,
+}
+
+impl MidiDeviceBuffer {
+    pub(crate) fn new() -> Self {
+        Self {
+            messages: Vec::with_capacity(MAX_MIDI_MESSAGES),
+            process_timestamp: 0,
+        }
+    }
+
+    /// The timestamp of the start of this process cycle.
+    fn process_timestamp(&self) -> u64 {
+        self.process_timestamp
+    }
+}
+
 pub struct ProcessInfo<'a> {
     pub audio_in: &'a [AudioDeviceBuffer],
     pub audio_out: &'a mut [AudioDeviceBuffer],
     pub audio_frames: usize,
+
+    pub midi_in: &'a [MidiDeviceBuffer],
+    pub midi_out: &'a mut [MidiDeviceBuffer],
 
     pub sample_rate: u32,
     // TODO: MIDI IO
@@ -274,10 +344,8 @@ pub struct ProcessInfo<'a> {
 #[derive(Debug)]
 pub enum SpawnRtThreadError {
     AudioServerUnavailable(String),
-    SystemPortNotFound(String),
-    VirtualDevicesNotSupported(String),
+    SystemAudioPortNotFound(String),
     NoSystemPortsGiven(String),
-    EmptyVirtualDevice(String),
     DeviceIdNotUnique(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
 }
@@ -294,31 +362,17 @@ impl std::fmt::Display for SpawnRtThreadError {
                     server
                 )
             }
-            SpawnRtThreadError::SystemPortNotFound(port) => {
+            SpawnRtThreadError::SystemAudioPortNotFound(port) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system port {} could not be found",
+                    "Error spawning rt thread: The system audio port {} could not be found",
                     port,
-                )
-            }
-            SpawnRtThreadError::VirtualDevicesNotSupported(server) => {
-                write!(
-                    f,
-                    "Error spawning rt thread: Virtual devices are not supported in the audio server {}",
-                    server,
                 )
             }
             SpawnRtThreadError::NoSystemPortsGiven(id) => {
                 write!(
                     f,
                     "Error spawning rt thread: No system ports were set for the device with id {}",
-                    id,
-                )
-            }
-            SpawnRtThreadError::EmptyVirtualDevice(id) => {
-                write!(
-                    f,
-                    "Error spawning rt thread: The virtual device with id {} must not have 0 channels.",
                     id,
                 )
             }
