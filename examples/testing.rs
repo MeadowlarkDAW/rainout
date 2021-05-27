@@ -12,14 +12,14 @@ fn main() {
     let audio_config = AudioServerConfig {
         server_name: String::from("Jack"),
         use_in_devices: vec![AudioDeviceConfig {
-            id: String::from("default_in"),
+            id: String::from("audio_in"),
             system_ports: vec![
                 String::from("system:capture_1"),
                 String::from("system:capture_2"),
             ],
         }],
         use_out_devices: vec![AudioDeviceConfig {
-            id: String::from("default_out"),
+            id: String::from("audio_out"),
             system_ports: vec![
                 String::from("system:playback_1"),
                 String::from("system:playback_2"),
@@ -29,9 +29,21 @@ fn main() {
         use_max_buffer_size: None,
     };
 
+    let midi_config = MidiServerConfig {
+        server_name: String::from("Jack"),
+        use_in_devices: vec![MidiDeviceConfig {
+            id: String::from("midi_in"),
+            system_port: String::from("system:midi_capture_2"),
+        }],
+        use_out_devices: vec![MidiDeviceConfig {
+            id: String::from("midi_out"),
+            system_port: String::from("system:midi_playback_2"),
+        }],
+    };
+
     let stream_handle = rusty_daw_io::spawn_rt_thread(
         &audio_config,
-        None,
+        Some(&midi_config),
         Some(String::from("testing")),
         MyRtProcessHandler {},
         |e| {
@@ -52,5 +64,6 @@ struct MyRtProcessHandler {}
 
 impl RtProcessHandler for MyRtProcessHandler {
     fn init(&mut self, stream_info: &StreamInfo) {}
-    fn process(&mut self, proc_info: ProcessInfo) {}
+    fn process(&mut self, proc_info: ProcessInfo) {
+    }
 }

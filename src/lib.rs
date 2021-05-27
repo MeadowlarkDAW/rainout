@@ -6,6 +6,9 @@ pub mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
+pub mod midi_buffer;
+pub use midi_buffer::*;
+
 pub const MAX_MIDI_MESSAGES: usize = 2048;
 pub const MAX_MIDI_MSG_SIZE: usize = 3;
 
@@ -225,13 +228,25 @@ pub trait RtProcessHandler: 'static + Send + Sized {
 
 #[derive(Debug)]
 pub struct AudioDeviceBuffer {
-    pub(crate) channels: Vec<Vec<f32>>,
+    pub(crate) channel_buffers: Vec<Vec<f32>>,
     pub(crate) frames: usize,
 }
 
 impl AudioDeviceBuffer {
+    pub(crate) fn new(channels: u16, max_buffer_size: u32) -> AudioDeviceBuffer {
+        let mut channel_buffers = Vec::<Vec<f32>>::new();
+        for _ in 0..channels {
+            channel_buffers.push(Vec::<f32>::with_capacity(max_buffer_size as usize));
+        }
+
+        AudioDeviceBuffer {
+            channel_buffers,
+            frames: 0,
+        }
+    }
+
     pub(crate) fn clear_and_resize(&mut self, frames: usize) {
-        for channel in self.channels.iter_mut() {
+        for channel in self.channel_buffers.iter_mut() {
             channel.clear();
 
             // This should never allocate because each buffer was given a capacity of
@@ -241,27 +256,27 @@ impl AudioDeviceBuffer {
 
         self.frames = frames;
     }
-}
 
-impl AudioDeviceBuffer {
     pub fn get(&self, channel: usize) -> Option<&[f32]> {
-        self.channels.get(channel).map(|c| c.as_slice())
+        self.channel_buffers.get(channel).map(|c| c.as_slice())
     }
 
     pub fn get_mut(&mut self, channel: usize) -> Option<&mut [f32]> {
-        self.channels.get_mut(channel).map(|c| c.as_mut_slice())
+        self.channel_buffers
+            .get_mut(channel)
+            .map(|c| c.as_mut_slice())
     }
 
     pub fn channels(&self) -> &[Vec<f32>] {
-        self.channels.as_slice()
+        self.channel_buffers.as_slice()
     }
 
     pub fn channels_mut(&mut self) -> &mut [Vec<f32>] {
-        self.channels.as_mut_slice()
+        self.channel_buffers.as_mut_slice()
     }
 
     pub fn num_channels(&self) -> usize {
-        self.channels.len()
+        self.channel_buffers.len()
     }
 
     pub fn frames(&self) -> usize {
@@ -273,60 +288,12 @@ impl std::ops::Index<usize> for AudioDeviceBuffer {
     type Output = [f32];
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.channels[index].as_slice()
+        self.channel_buffers[index].as_slice()
     }
 }
 impl std::ops::IndexMut<usize> for AudioDeviceBuffer {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.channels[index].as_mut_slice()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct MidiMessage {
-    pub timestamp: u64,
-    message_buffer: [u8; MAX_MIDI_MSG_SIZE],
-    message_bytes: u8,
-}
-
-impl MidiMessage {
-    pub(crate) fn new(timestamp: u64, message: &[u8]) -> Option<Self> {
-        if message.len() <= MAX_MIDI_MSG_SIZE {
-            let mut message_buffer = [0; MAX_MIDI_MSG_SIZE];
-            &mut message_buffer[0..message.len()].copy_from_slice(message);
-
-            Some(Self {
-                timestamp,
-                message_buffer,
-                message_bytes: message.len() as u8,
-            })
-        } else {
-            None
-        }
-    }
-
-    pub fn message(&self) -> &[u8] {
-        &self.message_buffer[0..usize::from(self.message_bytes)]
-    }
-}
-
-#[derive(Debug)]
-pub struct MidiDeviceBuffer {
-    pub messages: Vec<MidiMessage>,
-    process_timestamp: u64,
-}
-
-impl MidiDeviceBuffer {
-    pub(crate) fn new() -> Self {
-        Self {
-            messages: Vec::with_capacity(MAX_MIDI_MESSAGES),
-            process_timestamp: 0,
-        }
-    }
-
-    /// The timestamp of the start of this process cycle.
-    fn process_timestamp(&self) -> u64 {
-        self.process_timestamp
+        self.channel_buffers[index].as_mut_slice()
     }
 }
 

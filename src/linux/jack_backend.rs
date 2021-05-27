@@ -1,6 +1,6 @@
 use crate::{
     AudioDeviceBuffer, AudioDeviceConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
-    InternalAudioDevice, InternalMidiDevice, MidiDeviceConfig, MidiServerConfig, MidiServerInfo,
+    InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig, MidiServerInfo,
     ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
     SystemAudioDeviceInfo, SystemMidiDeviceInfo,
 };
@@ -207,6 +207,42 @@ where
         }
     }
 
+    let mut midi_in_ports = Vec::<jack::Port<jack::MidiIn>>::new();
+    let mut midi_in_port_names = Vec::<String>::new();
+    let mut midi_in_connected_port_names = Vec::<Option<String>>::new();
+    let mut midi_in_devices = Vec::<InternalMidiDevice>::new();
+    for (device_index, midi_device) in midi_in_device_config.iter().enumerate() {
+        midi_in_devices.push(InternalMidiDevice {
+            id_name: midi_device.id.clone(),
+            id_index: DeviceIndex::new(device_index),
+            system_port: midi_device.system_port.clone(),
+        });
+
+        let port = client.register_port(&midi_device.id, jack::MidiIn::default())?;
+
+        midi_in_port_names.push(port.name()?);
+        midi_in_connected_port_names.push(Some(midi_device.system_port.clone()));
+        midi_in_ports.push(port);
+    }
+
+    let mut midi_out_ports = Vec::<jack::Port<jack::MidiOut>>::new();
+    let mut midi_out_port_names = Vec::<String>::new();
+    let mut midi_out_connected_port_names = Vec::<Option<String>>::new();
+    let mut midi_out_devices = Vec::<InternalMidiDevice>::new();
+    for (device_index, midi_device) in midi_out_device_config.iter().enumerate() {
+        midi_out_devices.push(InternalMidiDevice {
+            id_name: midi_device.id.clone(),
+            id_index: DeviceIndex::new(device_index),
+            system_port: midi_device.system_port.clone(),
+        });
+
+        let port = client.register_port(&midi_device.id, jack::MidiOut::default())?;
+
+        midi_out_port_names.push(port.name()?);
+        midi_out_connected_port_names.push(Some(midi_device.system_port.clone()));
+        midi_out_ports.push(port);
+    }
+
     let sample_rate = client.sample_rate() as u32;
     let max_audio_buffer_size = client.buffer_size() as u32;
 
@@ -214,8 +250,8 @@ where
         server_name: String::from("Jack"),
         audio_in: audio_in_devices,
         audio_out: audio_out_devices,
-        midi_in: vec![],
-        midi_out: vec![],
+        midi_in: midi_in_devices,
+        midi_out: midi_out_devices,
         sample_rate: sample_rate as u32,
         audio_buffer_size: BufferSizeInfo::MaximumSize(max_audio_buffer_size),
     };
@@ -226,8 +262,10 @@ where
         rt_process_handler,
         audio_in_ports,
         audio_out_ports,
+        midi_in_ports,
+        midi_out_ports,
         stream_info.clone(),
-        max_audio_buffer_size as usize,
+        max_audio_buffer_size,
     );
 
     // Activate the client, which starts the processing.
@@ -261,6 +299,24 @@ where
         }
     }
 
+    for (in_port, system_in_port) in midi_in_port_names.iter().zip(midi_in_connected_port_names) {
+        if let Some(system_in_port) = &system_in_port {
+            async_client
+                .as_client()
+                .connect_ports_by_name(system_in_port, in_port)?;
+        }
+    }
+    for (out_port, system_out_port) in midi_out_port_names
+        .iter()
+        .zip(midi_out_connected_port_names)
+    {
+        if let Some(system_out_port) = &system_out_port {
+            async_client
+                .as_client()
+                .connect_ports_by_name(out_port, system_out_port)?;
+        }
+    }
+
     Ok((
         stream_info,
         JackRtThreadHandle {
@@ -278,6 +334,12 @@ struct JackProcessHandler<P: RtProcessHandler> {
     audio_in_buffers: Vec<AudioDeviceBuffer>,
     audio_out_buffers: Vec<AudioDeviceBuffer>,
 
+    midi_in_ports: Vec<jack::Port<jack::MidiIn>>,
+    midi_out_ports: Vec<jack::Port<jack::MidiOut>>,
+
+    midi_in_buffers: Vec<MidiDeviceBuffer>,
+    midi_out_buffers: Vec<MidiDeviceBuffer>,
+
     stream_info: StreamInfo,
     max_audio_buffer_size: usize,
 }
@@ -287,34 +349,35 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
         rt_process_handler: P,
         audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
         audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
+        midi_in_ports: Vec<jack::Port<jack::MidiIn>>,
+        midi_out_ports: Vec<jack::Port<jack::MidiOut>>,
         stream_info: StreamInfo,
-        max_audio_buffer_size: usize,
+        max_audio_buffer_size: u32,
     ) -> Self {
         let mut audio_in_buffers = Vec::<AudioDeviceBuffer>::new();
         let mut audio_out_buffers = Vec::<AudioDeviceBuffer>::new();
 
-        for internal_device in stream_info.audio_in.iter() {
-            let mut channels = Vec::<Vec<f32>>::new();
-            for _ in 0..internal_device.channels {
-                channels.push(Vec::<f32>::with_capacity(max_audio_buffer_size));
-            }
-
-            audio_in_buffers.push(AudioDeviceBuffer {
-                channels,
-                frames: 0,
-            });
+        for device in stream_info.audio_in.iter() {
+            audio_in_buffers.push(AudioDeviceBuffer::new(
+                device.channels,
+                max_audio_buffer_size,
+            ))
+        }
+        for device in stream_info.audio_out.iter() {
+            audio_out_buffers.push(AudioDeviceBuffer::new(
+                device.channels,
+                max_audio_buffer_size,
+            ))
         }
 
-        for internal_device in stream_info.audio_out.iter() {
-            let mut channels = Vec::<Vec<f32>>::new();
-            for _ in 0..internal_device.channels {
-                channels.push(Vec::<f32>::with_capacity(max_audio_buffer_size));
-            }
+        let mut midi_in_buffers = Vec::<MidiDeviceBuffer>::new();
+        let mut midi_out_buffers = Vec::<MidiDeviceBuffer>::new();
 
-            audio_out_buffers.push(AudioDeviceBuffer {
-                channels,
-                frames: 0,
-            });
+        for _ in 0..stream_info.midi_in.len() {
+            midi_in_buffers.push(MidiDeviceBuffer::new())
+        }
+        for _ in 0..stream_info.midi_out.len() {
+            midi_out_buffers.push(MidiDeviceBuffer::new())
         }
 
         Self {
@@ -323,8 +386,12 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
             audio_out_ports,
             audio_in_buffers,
             audio_out_buffers,
+            midi_in_ports,
+            midi_out_ports,
+            midi_in_buffers,
+            midi_out_buffers,
             stream_info,
-            max_audio_buffer_size,
+            max_audio_buffer_size: max_audio_buffer_size as usize,
         }
     }
 }
@@ -333,13 +400,14 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let mut audio_frames = 0;
 
-        // Copy all inputs into buffers.
-        let mut in_port = 0; // Ports are in order.
-        for in_device_buffer in self.audio_in_buffers.iter_mut() {
-            for channel in in_device_buffer.channels.iter_mut() {
-                let in_port_slice = self.audio_in_ports[in_port].as_slice(ps);
+        // Collect Audio Inputs
 
-                audio_frames = in_port_slice.len();
+        let mut port = 0; // Ports are in order.
+        for audio_buffer in self.audio_in_buffers.iter_mut() {
+            for channel in audio_buffer.channel_buffers.iter_mut() {
+                let port_slice = self.audio_in_ports[port].as_slice(ps);
+
+                audio_frames = port_slice.len();
 
                 // Sanity check.
                 if audio_frames > self.max_audio_buffer_size {
@@ -350,12 +418,12 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
                 // the slice. This should never allocate because each buffer was given a capacity of
                 // the maximum buffer size that jack will send.
                 channel.resize(audio_frames, 0.0);
-                channel.copy_from_slice(in_port_slice);
+                channel.copy_from_slice(port_slice);
 
-                in_port += 1;
+                port += 1;
             }
 
-            in_device_buffer.frames = audio_frames;
+            audio_buffer.frames = audio_frames;
         }
 
         if self.audio_in_buffers.len() == 0 {
@@ -365,9 +433,35 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
             }
         }
 
-        // Clear all output buffers to zeros.
-        for out_device_buffer in self.audio_out_buffers.iter_mut() {
-            out_device_buffer.clear_and_resize(audio_frames);
+        // Clear Audio Outputs
+
+        for audio_buffer in self.audio_out_buffers.iter_mut() {
+            audio_buffer.clear_and_resize(audio_frames);
+        }
+
+        // Collect MIDI Inputs
+
+        for (midi_buffer, port) in self
+            .midi_in_buffers
+            .iter_mut()
+            .zip(self.midi_in_ports.iter())
+        {
+            midi_buffer.clear();
+
+            for event in port.iter(ps) {
+                if let Err(e) = midi_buffer.push_raw(event.time, event.bytes) {
+                    println!(
+                        "Warning: Dropping midi event because of the push error: {}",
+                        e
+                    );
+                }
+            }
+        }
+
+        // Clear MIDI Outputs
+
+        for midi_buffer in self.midi_out_buffers.iter_mut() {
+            midi_buffer.clear();
         }
 
         self.rt_process_handler.process(ProcessInfo {
@@ -375,20 +469,21 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
             audio_out: self.audio_out_buffers.as_mut_slice(),
             audio_frames,
 
-            midi_in: &[],
-            midi_out: &mut [],
+            midi_in: self.midi_in_buffers.as_slice(),
+            midi_out: self.midi_out_buffers.as_mut_slice(),
 
             sample_rate: self.stream_info.sample_rate,
         });
 
-        // Copy new data to outputs.
-        let mut out_port = 0; // Ports are in order.
-        for out_device_buffer in self.audio_out_buffers.iter() {
-            for channel in out_device_buffer.channels.iter() {
-                let out_port_slice = self.audio_out_ports[out_port].as_mut_slice(ps);
+        // Copy processed data to Audio Outputs
+
+        let mut port = 0; // Ports are in order.
+        for audio_buffer in self.audio_out_buffers.iter() {
+            for channel in audio_buffer.channel_buffers.iter() {
+                let port_slice = self.audio_out_ports[port].as_mut_slice(ps);
 
                 // Just in case the user resized the output buffer for some reason.
-                let len = channel.len().min(out_port_slice.len());
+                let len = channel.len().min(port_slice.len());
                 if len != audio_frames {
                     println!(
                         "Warning: An audio output buffer was resized from {} to {} by the user",
@@ -396,9 +491,28 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
                     );
                 }
 
-                &mut out_port_slice[0..len].copy_from_slice(&channel[0..len]);
+                &mut port_slice[0..len].copy_from_slice(&channel[0..len]);
 
-                out_port += 1;
+                port += 1;
+            }
+        }
+
+        // Copy processed data to MIDI Outputs
+
+        for (midi_buffer, port) in self
+            .midi_out_buffers
+            .iter()
+            .zip(self.midi_out_ports.iter_mut())
+        {
+            let mut port_writer = port.writer(ps);
+
+            for event in midi_buffer.events() {
+                if let Err(e) = port_writer.write(&jack::RawMidi {
+                    time: event.delta_frames,
+                    bytes: &event.data(),
+                }) {
+                    println!("Error copying midi data to Jack: {}", e);
+                }
             }
         }
 
@@ -418,7 +532,7 @@ where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
     fn thread_init(&self, _: &jack::Client) {
-        println!("JACK: thread init");
+        // println!("JACK: thread init");
     }
 
     fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
@@ -434,55 +548,64 @@ where
         }
     }
 
-    fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
+    fn freewheel(&mut self, _: &jack::Client, _is_enabled: bool) {
+        /*
         println!(
             "JACK: freewheel mode is {}",
             if is_enabled { "on" } else { "off" }
         );
+        */
     }
 
-    fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        println!("JACK: sample rate changed to {}", srate);
+    fn sample_rate(&mut self, _: &jack::Client, _srate: jack::Frames) -> jack::Control {
+        //println!("JACK: sample rate changed to {}", srate);
         jack::Control::Continue
     }
 
-    fn client_registration(&mut self, _: &jack::Client, name: &str, is_reg: bool) {
+    fn client_registration(&mut self, _: &jack::Client, _name: &str, _is_reg: bool) {
+        /*
         println!(
             "JACK: {} client with name \"{}\"",
             if is_reg { "registered" } else { "unregistered" },
             name
         );
+        */
     }
 
-    fn port_registration(&mut self, _: &jack::Client, port_id: jack::PortId, is_reg: bool) {
+    fn port_registration(&mut self, _: &jack::Client, _port_id: jack::PortId, _is_reg: bool) {
+        /*
         println!(
             "JACK: {} port with id {}",
             if is_reg { "registered" } else { "unregistered" },
             port_id
         );
+        */
     }
 
     fn port_rename(
         &mut self,
         _: &jack::Client,
-        port_id: jack::PortId,
-        old_name: &str,
-        new_name: &str,
+        _port_id: jack::PortId,
+        _old_name: &str,
+        _new_name: &str,
     ) -> jack::Control {
+        /*
         println!(
             "JACK: port with id {} renamed from {} to {}",
             port_id, old_name, new_name
         );
+        */
         jack::Control::Continue
     }
 
     fn ports_connected(
         &mut self,
         _: &jack::Client,
-        port_id_a: jack::PortId,
-        port_id_b: jack::PortId,
-        are_connected: bool,
+        _port_id_a: jack::PortId,
+        _port_id_b: jack::PortId,
+        _are_connected: bool,
     ) {
+        /*
         println!(
             "JACK: ports with id {} and {} are {}",
             port_id_a,
@@ -493,10 +616,11 @@ where
                 "disconnected"
             }
         );
+        */
     }
 
     fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
-        println!("JACK: graph reordered");
+        //println!("JACK: graph reordered");
         jack::Control::Continue
     }
 
@@ -505,7 +629,8 @@ where
         jack::Control::Continue
     }
 
-    fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
+    fn latency(&mut self, _: &jack::Client, _mode: jack::LatencyType) {
+        /*
         println!(
             "JACK: {} latency has changed",
             match mode {
@@ -513,6 +638,7 @@ where
                 jack::LatencyType::Playback => "playback",
             }
         );
+        */
     }
 }
 
