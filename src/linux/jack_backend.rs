@@ -1,3 +1,5 @@
+use log::{debug, info, warn};
+
 use crate::{
     AudioDeviceBuffer, AudioDeviceConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
     InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig, MidiServerInfo,
@@ -18,6 +20,8 @@ fn extract_device_name(port_name: &String) -> String {
 }
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
+    info!("Refreshing list of available Jack audio devices...");
+
     server.system_in_devices.clear();
     server.system_out_devices.clear();
 
@@ -59,7 +63,7 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
                     server.system_in_devices.push(SystemAudioDeviceInfo {
                         name: system_device_name.clone(),
                         ports: vec![system_port_name.clone()],
-                    })
+                    });
                 }
             }
 
@@ -79,8 +83,12 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
                     server.system_out_devices.push(SystemAudioDeviceInfo {
                         name: system_device_name.clone(),
                         ports: vec![system_port_name.clone()],
-                    })
+                    });
+
+                    info!("Found Jack audio device: {}", &system_device_name);
                 }
+
+                debug!("Found Jack audio device port: {}", &system_port_name);
             }
 
             server.active = true;
@@ -89,11 +97,15 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
             server.sample_rates.clear();
             server.buffer_size = BufferSizeInfo::UnknownSize;
             server.active = false;
+
+            info!("Jack server is not running");
         }
     }
 }
 
 pub fn refresh_midi_server(server: &mut MidiServerInfo) {
+    info!("Refreshing list of available Jack MIDI devices...");
+
     server.system_in_devices.clear();
     server.system_out_devices.clear();
 
@@ -111,17 +123,23 @@ pub fn refresh_midi_server(server: &mut MidiServerInfo) {
                 server.system_in_devices.push(SystemMidiDeviceInfo {
                     name: system_port_name.clone(),
                 });
+
+                info!("Found MIDI in port: {}", &system_port_name);
             }
             for system_port_name in system_midi_out_ports.iter() {
                 server.system_out_devices.push(SystemMidiDeviceInfo {
                     name: system_port_name.clone(),
                 });
+
+                info!("Found MIDI out port: {}", &system_port_name);
             }
 
             server.active = true;
         }
         Err(_) => {
             server.active = false;
+
+            info!("Jack server is not running");
         }
     }
 }
@@ -145,7 +163,11 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E>(
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
+    info!("Spawning Jack thread...");
+
     let client_name = use_client_name.unwrap_or(String::from("rusty-daw-io"));
+
+    info!("Registering Jack client with name {}", &client_name);
 
     let (client, _status) = jack::Client::new(&client_name, jack::ClientOptions::NO_START_SERVER)?;
 
@@ -171,6 +193,7 @@ where
 
         for (i, system_port_name) in audio_device.system_ports.iter().enumerate() {
             let port_name = format!("{}_{}", &audio_device.id, i + 1);
+            debug!("Registering Jack audio in port: {}", &port_name);
             let port = client.register_port(&port_name, jack::AudioIn::default())?;
 
             audio_in_port_names.push(port.name()?);
@@ -199,6 +222,7 @@ where
 
         for (i, system_port_name) in audio_device.system_ports.iter().enumerate() {
             let port_name = format!("{}_{}", &audio_device.id, i + 1);
+            debug!("Registering Jack audio out port: {}", &port_name);
             let port = client.register_port(&port_name, jack::AudioOut::default())?;
 
             audio_out_port_names.push(port.name()?);
@@ -218,6 +242,8 @@ where
             system_port: midi_device.system_port.clone(),
         });
 
+        debug!("Registering Jack midi in port: {}", &midi_device.id);
+
         let port = client.register_port(&midi_device.id, jack::MidiIn::default())?;
 
         midi_in_port_names.push(port.name()?);
@@ -235,6 +261,8 @@ where
             id_index: DeviceIndex::new(device_index),
             system_port: midi_device.system_port.clone(),
         });
+
+        debug!("Registering Jack midi out port: {}", &midi_device.id);
 
         let port = client.register_port(&midi_device.id, jack::MidiOut::default())?;
 
@@ -268,6 +296,8 @@ where
         max_audio_buffer_size,
     );
 
+    info!("Activating Jack client...");
+
     // Activate the client, which starts the processing.
     let async_client = client.activate_async(
         JackNotificationHandler {
@@ -283,6 +313,7 @@ where
         .zip(audio_in_connected_port_names)
     {
         if let Some(system_in_port) = &system_in_port {
+            debug!("Connecting Jack port {} to {}", system_in_port, in_port);
             async_client
                 .as_client()
                 .connect_ports_by_name(system_in_port, in_port)?;
@@ -293,6 +324,7 @@ where
         .zip(audio_out_connected_port_names)
     {
         if let Some(system_out_port) = &system_out_port {
+            debug!("Connecting Jack port {} to {}", out_port, system_out_port);
             async_client
                 .as_client()
                 .connect_ports_by_name(out_port, system_out_port)?;
@@ -301,6 +333,7 @@ where
 
     for (in_port, system_in_port) in midi_in_port_names.iter().zip(midi_in_connected_port_names) {
         if let Some(system_in_port) = &system_in_port {
+            debug!("Connecting Jack port {} to {}", system_in_port, in_port);
             async_client
                 .as_client()
                 .connect_ports_by_name(system_in_port, in_port)?;
@@ -311,11 +344,17 @@ where
         .zip(midi_out_connected_port_names)
     {
         if let Some(system_out_port) = &system_out_port {
+            debug!("Connecting Jack port {} to {}", out_port, system_out_port);
             async_client
                 .as_client()
                 .connect_ports_by_name(out_port, system_out_port)?;
         }
     }
+
+    info!(
+        "Successfully spawned Jack thread. Sample rate: {}, Max audio buffer size: {}",
+        sample_rate, max_audio_buffer_size
+    );
 
     Ok((
         stream_info,
@@ -411,7 +450,7 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
 
                 // Sanity check.
                 if audio_frames > self.max_audio_buffer_size {
-                    println!("Warning: Jack sent a buffer size of {} when the max buffer size was said to be {}", audio_frames, self.max_audio_buffer_size);
+                    warn!("Warning: Jack sent a buffer size of {} when the max buffer size was said to be {}", audio_frames, self.max_audio_buffer_size);
                 }
 
                 // The compiler should in-theory optimize by not filling in zeros before copying
@@ -450,7 +489,7 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
 
             for event in port.iter(ps) {
                 if let Err(e) = midi_buffer.push_raw(event.time, event.bytes) {
-                    println!(
+                    warn!(
                         "Warning: Dropping midi event because of the push error: {}",
                         e
                     );
@@ -485,7 +524,7 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
                 // Just in case the user resized the output buffer for some reason.
                 let len = channel.len().min(port_slice.len());
                 if len != audio_frames {
-                    println!(
+                    warn!(
                         "Warning: An audio output buffer was resized from {} to {} by the user",
                         audio_frames, len
                     );
@@ -511,7 +550,7 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
                     time: event.delta_frames,
                     bytes: &event.data(),
                 }) {
-                    println!("Error copying midi data to Jack: {}", e);
+                    warn!("Warning: Could not copy midi data to Jack output: {}", e);
                 }
             }
         }
@@ -532,7 +571,7 @@ where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
     fn thread_init(&self, _: &jack::Client) {
-        // println!("JACK: thread init");
+        debug!("JACK: thread init");
     }
 
     fn shutdown(&mut self, status: jack::ClientStatus, reason: &str) {
@@ -541,72 +580,63 @@ where
             status, reason
         );
 
-        println!("{:?}", msg);
+        info!("{}", msg);
 
         if let Some(error_callback) = self.error_callback.take() {
             (error_callback)(StreamError::AudioServerDisconnected(msg))
         }
     }
 
-    fn freewheel(&mut self, _: &jack::Client, _is_enabled: bool) {
-        /*
-        println!(
+    fn freewheel(&mut self, _: &jack::Client, is_enabled: bool) {
+        debug!(
             "JACK: freewheel mode is {}",
             if is_enabled { "on" } else { "off" }
         );
-        */
     }
 
-    fn sample_rate(&mut self, _: &jack::Client, _srate: jack::Frames) -> jack::Control {
-        //println!("JACK: sample rate changed to {}", srate);
+    fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
+        debug!("JACK: sample rate changed to {}", srate);
         jack::Control::Continue
     }
 
-    fn client_registration(&mut self, _: &jack::Client, _name: &str, _is_reg: bool) {
-        /*
-        println!(
+    fn client_registration(&mut self, _: &jack::Client, name: &str, is_reg: bool) {
+        debug!(
             "JACK: {} client with name \"{}\"",
             if is_reg { "registered" } else { "unregistered" },
             name
         );
-        */
     }
 
-    fn port_registration(&mut self, _: &jack::Client, _port_id: jack::PortId, _is_reg: bool) {
-        /*
-        println!(
+    fn port_registration(&mut self, _: &jack::Client, port_id: jack::PortId, is_reg: bool) {
+        debug!(
             "JACK: {} port with id {}",
             if is_reg { "registered" } else { "unregistered" },
             port_id
         );
-        */
     }
 
     fn port_rename(
         &mut self,
         _: &jack::Client,
-        _port_id: jack::PortId,
-        _old_name: &str,
-        _new_name: &str,
+        port_id: jack::PortId,
+        old_name: &str,
+        new_name: &str,
     ) -> jack::Control {
-        /*
-        println!(
+        debug!(
             "JACK: port with id {} renamed from {} to {}",
             port_id, old_name, new_name
         );
-        */
         jack::Control::Continue
     }
 
     fn ports_connected(
         &mut self,
         _: &jack::Client,
-        _port_id_a: jack::PortId,
-        _port_id_b: jack::PortId,
-        _are_connected: bool,
+        port_id_a: jack::PortId,
+        port_id_b: jack::PortId,
+        are_connected: bool,
     ) {
-        /*
-        println!(
+        debug!(
             "JACK: ports with id {} and {} are {}",
             port_id_a,
             port_id_b,
@@ -616,29 +646,26 @@ where
                 "disconnected"
             }
         );
-        */
     }
 
     fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
-        //println!("JACK: graph reordered");
+        debug!("JACK: graph reordered");
         jack::Control::Continue
     }
 
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
-        //println!("JACK: xrun occurred");
+        warn!("JACK: xrun occurred");
         jack::Control::Continue
     }
 
-    fn latency(&mut self, _: &jack::Client, _mode: jack::LatencyType) {
-        /*
-        println!(
+    fn latency(&mut self, _: &jack::Client, mode: jack::LatencyType) {
+        debug!(
             "JACK: {} latency has changed",
             match mode {
                 jack::LatencyType::Capture => "capture",
                 jack::LatencyType::Playback => "playback",
             }
         );
-        */
     }
 }
 

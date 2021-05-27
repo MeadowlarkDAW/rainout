@@ -4,6 +4,8 @@ use rusty_daw_io::{
 };
 
 fn main() {
+    simple_logger::SimpleLogger::new().init().unwrap();
+
     let info = DeviceInfo::new();
 
     dbg!(info.audio_servers_info());
@@ -64,6 +66,5 @@ struct MyRtProcessHandler {}
 
 impl RtProcessHandler for MyRtProcessHandler {
     fn init(&mut self, stream_info: &StreamInfo) {}
-    fn process(&mut self, proc_info: ProcessInfo) {
-    }
+    fn process(&mut self, proc_info: ProcessInfo) {}
 }
