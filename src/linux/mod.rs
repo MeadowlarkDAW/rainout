@@ -3,6 +3,7 @@ use super::{
     OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
 };
 
+mod alsa_backend;
 mod jack_backend;
 
 pub struct LinuxStreamHandle<P: RtProcessHandler, E>
@@ -26,8 +27,8 @@ where
 }
 
 pub struct LinuxDevicesInfo {
-    audio_servers_info: [AudioServerInfo; 1],
-    midi_servers_info: [MidiServerInfo; 1],
+    audio_servers_info: [AudioServerInfo; 2],
+    midi_servers_info: [MidiServerInfo; 2],
 }
 
 impl Default for LinuxDevicesInfo {
@@ -35,13 +36,12 @@ impl Default for LinuxDevicesInfo {
         let mut new_self = Self {
             audio_servers_info: [
                 AudioServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
+                AudioServerInfo::new(String::from("ALSA"), None), // TODO: Get ALSA version?
             ],
-            midi_servers_info: [MidiServerInfo {
-                name: String::from("Jack"),
-                system_in_devices: Vec::new(),
-                system_out_devices: Vec::new(),
-                active: false,
-            }],
+            midi_servers_info: [
+                MidiServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
+                MidiServerInfo::new(String::from("ALSA"), None), // TODO: Get ALSA version?
+            ],
         };
 
         new_self.refresh_audio_servers();
@@ -55,6 +55,8 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     fn refresh_audio_servers(&mut self) {
         // First server is Jack
         jack_backend::refresh_audio_server(&mut self.audio_servers_info[0]);
+        // Second server is ALSA
+        alsa_backend::refresh_audio_server(&mut self.audio_servers_info[1]);
     }
 
     fn refresh_midi_servers(&mut self) {

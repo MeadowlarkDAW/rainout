@@ -16,8 +16,13 @@ pub struct AudioDeviceConfig {
     /// * Speakers Out
     pub id: String,
 
-    /// The names of the system ports this device is connected to.
-    pub system_ports: Vec<String>,
+    /// The name of the system device this device is connected to.
+    pub system_device: String,
+
+    /// The channels (by index) to use in this device.
+    ///
+    /// Set this to `None` to use all the channels in the device.
+    pub system_channels: Option<Vec<u16>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

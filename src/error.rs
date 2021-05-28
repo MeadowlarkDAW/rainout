@@ -1,8 +1,9 @@
 #[derive(Debug)]
 pub enum SpawnRtThreadError {
     AudioServerUnavailable(String),
-    SystemAudioPortNotFound(String),
-    NoSystemPortsGiven(String),
+    SystemDeviceNotFound(String),
+    SystemChannelNotFound(String, u16),
+    NoSystemChannelsGiven(String),
     DeviceIdNotUnique(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
 }
@@ -15,21 +16,29 @@ impl std::fmt::Display for SpawnRtThreadError {
             SpawnRtThreadError::AudioServerUnavailable(server) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The audio sever is unavailable: {}.",
+                    "Error spawning rt thread: The audio sever is unavailable: {}",
                     server
                 )
             }
-            SpawnRtThreadError::SystemAudioPortNotFound(port) => {
+            SpawnRtThreadError::SystemDeviceNotFound(device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system audio port {} could not be found",
-                    port,
+                    "Error spawning rt thread: The system device {} could not be found",
+                    device
                 )
             }
-            SpawnRtThreadError::NoSystemPortsGiven(id) => {
+            SpawnRtThreadError::SystemChannelNotFound(device, channel) => {
                 write!(
                     f,
-                    "Error spawning rt thread: No system ports were set for the device with id {}",
+                    "Error spawning rt thread: The system audio device {} does not have the channel {}",
+                    device,
+                    channel,
+                )
+            }
+            SpawnRtThreadError::NoSystemChannelsGiven(id) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: No system channels were set for the device with id {}",
                     id,
                 )
             }
@@ -62,14 +71,14 @@ impl std::fmt::Display for StreamError {
             StreamError::AudioServerDisconnected(server) => {
                 write!(
                     f,
-                    "Stream error: The audio sever was disconnected: {}.",
+                    "Stream error: The audio sever was disconnected: {}",
                     server
                 )
             }
             StreamError::AudioDeviceDisconnected(device) => {
                 write!(
                     f,
-                    "Stream error: The audio device was disconnected: {}.",
+                    "Stream error: The audio device was disconnected: {}",
                     device
                 )
             }

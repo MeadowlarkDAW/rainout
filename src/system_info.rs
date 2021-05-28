@@ -8,7 +8,7 @@ pub enum BufferSizeInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SystemAudioDeviceInfo {
     pub name: String,
-    pub ports: Vec<String>,
+    pub channels: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +19,7 @@ pub struct AudioServerInfo {
     pub system_out_devices: Vec<SystemAudioDeviceInfo>,
     pub sample_rates: Vec<u32>,
     pub buffer_size: BufferSizeInfo,
-    pub active: bool,
+    pub available: bool,
 }
 
 impl AudioServerInfo {
@@ -31,7 +31,7 @@ impl AudioServerInfo {
             system_out_devices: Vec::new(),
             sample_rates: Vec::new(),
             buffer_size: BufferSizeInfo::UnknownSize,
-            active: false,
+            available: false,
         }
     }
 }
@@ -44,7 +44,20 @@ pub struct SystemMidiDeviceInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MidiServerInfo {
     pub name: String,
+    pub version: Option<String>,
     pub system_in_devices: Vec<SystemMidiDeviceInfo>,
     pub system_out_devices: Vec<SystemMidiDeviceInfo>,
-    pub active: bool,
+    pub available: bool,
+}
+
+impl MidiServerInfo {
+    pub(crate) fn new(name: String, version: Option<String>) -> Self {
+        Self {
+            name,
+            version,
+            system_in_devices: Vec::new(),
+            system_out_devices: Vec::new(),
+            available: false,
+        }
+    }
 }

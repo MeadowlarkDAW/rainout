@@ -19,6 +19,7 @@ log = "0.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 jack = "0.7"
+alsa = "0.5"
 
 [dev-dependencies]
 simple_logger = "1.11"

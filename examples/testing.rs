@@ -15,17 +15,13 @@ fn main() {
         server_name: String::from("Jack"),
         use_in_devices: vec![AudioDeviceConfig {
             id: String::from("audio_in"),
-            system_ports: vec![
-                String::from("system:capture_1"),
-                String::from("system:capture_2"),
-            ],
+            system_device: String::from("system"),
+            system_channels: Some(vec![0, 1]),
         }],
         use_out_devices: vec![AudioDeviceConfig {
             id: String::from("audio_out"),
-            system_ports: vec![
-                String::from("system:playback_1"),
-                String::from("system:playback_2"),
-            ],
+            system_device: String::from("system"),
+            system_channels: Some(vec![0, 1]),
         }],
         use_sample_rate: None,
         use_max_buffer_size: None,
