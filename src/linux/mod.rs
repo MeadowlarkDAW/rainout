@@ -1,11 +1,11 @@
 use super::{
-    AudioServerConfig, AudioServerInfo, MidiServerConfig, MidiServerInfo, RtProcessHandler,
-    SpawnRtThreadError, StreamError, StreamInfo,
+    AudioServerConfig, AudioServerInfo, MidiServerConfig, MidiServerInfo, OsDevicesInfo,
+    OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
 };
 
 mod jack_backend;
 
-pub struct StreamHandle<P: RtProcessHandler, E>
+pub struct LinuxStreamHandle<P: RtProcessHandler, E>
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
@@ -13,22 +13,25 @@ where
     _jack_server_handle: Option<jack_backend::JackRtThreadHandle<P, E>>,
 }
 
-impl<P: RtProcessHandler, E> StreamHandle<P, E>
+impl<P: RtProcessHandler, E> OsStreamHandle for LinuxStreamHandle<P, E>
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    pub fn stream_info(&self) -> &StreamInfo {
+    type P = P;
+    type E = E;
+
+    fn stream_info(&self) -> &StreamInfo {
         &self.stream_info
     }
 }
 
-pub struct DeviceInfo {
+pub struct LinuxDevicesInfo {
     audio_servers_info: [AudioServerInfo; 1],
     midi_servers_info: [MidiServerInfo; 1],
 }
 
-impl DeviceInfo {
-    pub fn new() -> Self {
+impl Default for LinuxDevicesInfo {
+    fn default() -> Self {
         let mut new_self = Self {
             audio_servers_info: [
                 AudioServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
@@ -46,22 +49,24 @@ impl DeviceInfo {
 
         new_self
     }
+}
 
-    pub fn refresh_audio_servers(&mut self) {
+impl OsDevicesInfo for LinuxDevicesInfo {
+    fn refresh_audio_servers(&mut self) {
         // First server is Jack
         jack_backend::refresh_audio_server(&mut self.audio_servers_info[0]);
     }
 
-    pub fn refresh_midi_servers(&mut self) {
+    fn refresh_midi_servers(&mut self) {
         // First server is Jack
         jack_backend::refresh_midi_server(&mut self.midi_servers_info[0]);
     }
 
-    pub fn audio_servers_info(&self) -> &[AudioServerInfo] {
+    fn audio_servers_info(&self) -> &[AudioServerInfo] {
         &self.audio_servers_info
     }
 
-    pub fn midi_servers_info(&self) -> &[MidiServerInfo] {
+    fn midi_servers_info(&self) -> &[MidiServerInfo] {
         &self.midi_servers_info
     }
 }
@@ -72,12 +77,10 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E>(
     use_client_name: Option<String>,
     rt_process_handler: P,
     error_callback: E,
-) -> Result<StreamHandle<P, E>, SpawnRtThreadError>
+) -> Result<LinuxStreamHandle<P, E>, SpawnRtThreadError>
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    check_duplicate_ids(audio_config, midi_config)?;
-
     match audio_config.server_name.as_str() {
         "Jack" => {
             if let Some(midi_config) = midi_config {
@@ -92,7 +95,7 @@ where
                         use_client_name,
                     )?;
 
-                    return Ok(StreamHandle {
+                    return Ok(LinuxStreamHandle {
                         stream_info,
                         _jack_server_handle: Some(jack_server_handle),
                     });
@@ -109,7 +112,7 @@ where
                 use_client_name,
             )?;
 
-            return Ok(StreamHandle {
+            return Ok(LinuxStreamHandle {
                 stream_info,
                 _jack_server_handle: Some(jack_server_handle),
             });
@@ -119,37 +122,4 @@ where
             Err(SpawnRtThreadError::AudioServerUnavailable(s))
         }
     }
-}
-
-pub fn check_duplicate_ids(
-    audio_config: &AudioServerConfig,
-    midi_config: Option<&MidiServerConfig>,
-) -> Result<(), SpawnRtThreadError> {
-    let mut device_ids = std::collections::HashSet::new();
-
-    for in_device in audio_config.use_in_devices.iter() {
-        if !device_ids.insert(in_device.id.clone()) {
-            return Err(SpawnRtThreadError::DeviceIdNotUnique(in_device.id.clone()));
-        }
-    }
-    for out_device in audio_config.use_out_devices.iter() {
-        if !device_ids.insert(out_device.id.clone()) {
-            return Err(SpawnRtThreadError::DeviceIdNotUnique(out_device.id.clone()));
-        }
-    }
-
-    if let Some(midi_config) = midi_config {
-        for in_device in midi_config.use_in_devices.iter() {
-            if !device_ids.insert(in_device.id.clone()) {
-                return Err(SpawnRtThreadError::DeviceIdNotUnique(in_device.id.clone()));
-            }
-        }
-        for out_device in midi_config.use_out_devices.iter() {
-            if !device_ids.insert(out_device.id.clone()) {
-                return Err(SpawnRtThreadError::DeviceIdNotUnique(out_device.id.clone()));
-            }
-        }
-    }
-
-    Ok(())
 }

@@ -1,12 +1,12 @@
 use rusty_daw_io::{
-    AudioDeviceConfig, AudioServerConfig, DeviceInfo, MidiDeviceConfig, MidiServerConfig,
+    AudioDeviceConfig, AudioServerConfig, DevicesInfo, MidiDeviceConfig, MidiServerConfig,
     ProcessInfo, RtProcessHandler, StreamInfo,
 };
 
 fn main() {
     simple_logger::SimpleLogger::new().init().unwrap();
 
-    let info = DeviceInfo::new();
+    let info = DevicesInfo::new();
 
     dbg!(info.audio_servers_info());
     dbg!(info.midi_servers_info());
