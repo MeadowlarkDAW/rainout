@@ -1,6 +1,6 @@
 use rusty_daw_io::{
     AudioDeviceConfig, AudioServerConfig, DevicesInfo, MidiDeviceConfig, MidiServerConfig,
-    ProcessInfo, RtProcessHandler, StreamInfo,
+    ProcessInfo, RtProcessHandler, StreamInfo, SystemChannels,
 };
 
 fn main() {
@@ -16,12 +16,12 @@ fn main() {
         use_in_devices: vec![AudioDeviceConfig {
             id: String::from("audio_in"),
             system_device: String::from("system"),
-            system_channels: Some(vec![0, 1]),
+            system_channels: SystemChannels::UpToStereo,
         }],
         use_out_devices: vec![AudioDeviceConfig {
             id: String::from("audio_out"),
             system_device: String::from("system"),
-            system_channels: Some(vec![0, 1]),
+            system_channels: SystemChannels::UpToStereo,
         }],
         use_sample_rate: None,
         use_max_buffer_size: None,

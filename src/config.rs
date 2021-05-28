@@ -1,6 +1,38 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum SystemChannels {
+    /// Use only up to the first two channels in the system device.
+    UpToStereo,
+
+    /// Use all channels in the system device.
+    All,
+
+    /// Use these specific channels in the system device.
+    ///
+    /// i.e. `vec![0, 1, 6, 7]` = use channels 0, 1, 6, and 7.
+    ///
+    /// This will produce an error if the channel does not exist in the device.
+    Use(Vec<u16>),
+}
+
+impl SystemChannels {
+    pub fn as_index_vec(&self, system_device_channels: u16) -> Vec<u16> {
+        match self {
+            SystemChannels::UpToStereo => (0..system_device_channels.min(2)).collect(),
+            SystemChannels::All => (0..system_device_channels).collect(),
+            SystemChannels::Use(s) => s.clone(),
+        }
+    }
+}
+
+impl Default for SystemChannels {
+    fn default() -> Self {
+        SystemChannels::UpToStereo
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioDeviceConfig {
     /// The ID to use for this device. This ID is for the "internal" device that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the name of the actual
@@ -19,10 +51,8 @@ pub struct AudioDeviceConfig {
     /// The name of the system device this device is connected to.
     pub system_device: String,
 
-    /// The channels (by index) to use in this device.
-    ///
-    /// Set this to `None` to use all the channels in the device.
-    pub system_channels: Option<Vec<u16>>,
+    /// The channels (of the system device) that this device will be connected to.
+    pub system_channels: SystemChannels,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

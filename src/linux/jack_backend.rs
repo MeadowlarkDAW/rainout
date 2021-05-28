@@ -240,8 +240,7 @@ where
             if &audio_device.system_device == &system_device.0 {
                 let system_channels = audio_device
                     .system_channels
-                    .clone()
-                    .unwrap_or((0..system_device.1.len() as u16).collect());
+                    .as_index_vec(system_device.1.len() as u16);
 
                 if system_channels.len() == 0 {
                     return Err(SpawnRtThreadError::NoSystemChannelsGiven(
@@ -299,8 +298,7 @@ where
             if &audio_device.system_device == &system_device.0 {
                 let system_channels = audio_device
                     .system_channels
-                    .clone()
-                    .unwrap_or((0..system_device.1.len() as u16).collect());
+                    .as_index_vec(system_device.1.len() as u16);
 
                 if system_channels.len() == 0 {
                     return Err(SpawnRtThreadError::NoSystemChannelsGiven(
