@@ -1,8 +1,11 @@
 #[derive(Debug)]
 pub enum SpawnRtThreadError {
     AudioServerUnavailable(String),
-    SystemDeviceNotFound(String),
-    SystemChannelNotFound(String, u16),
+    SystemDuplexDeviceNotFound(String),
+    SystemAudioInDeviceNotFound(String),
+    SystemAudioOutDeviceNotFound(String),
+    SystemInChannelNotFound(String, u16),
+    SystemOutChannelNotFound(String, u16),
     NoSystemChannelsGiven(String),
     DeviceIdNotUnique(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
@@ -20,17 +23,39 @@ impl std::fmt::Display for SpawnRtThreadError {
                     server
                 )
             }
-            SpawnRtThreadError::SystemDeviceNotFound(device) => {
+            SpawnRtThreadError::SystemDuplexDeviceNotFound(device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system device {} could not be found",
+                    "Error spawning rt thread: The system duplex audio device {} could not be found",
                     device
                 )
             }
-            SpawnRtThreadError::SystemChannelNotFound(device, channel) => {
+            SpawnRtThreadError::SystemAudioInDeviceNotFound(device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system audio device {} does not have the channel {}",
+                    "Error spawning rt thread: The system input audio device {} could not be found",
+                    device
+                )
+            }
+            SpawnRtThreadError::SystemAudioOutDeviceNotFound(device) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: The system output audio device {} could not be found",
+                    device
+                )
+            }
+            SpawnRtThreadError::SystemInChannelNotFound(device, channel) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: The system audio device {} does not have the input channel {}",
+                    device,
+                    channel,
+                )
+            }
+            SpawnRtThreadError::SystemOutChannelNotFound(device, channel) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: The system audio device {} does not have the output channel {}",
                     device,
                     channel,
                 )

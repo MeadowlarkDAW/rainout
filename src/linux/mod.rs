@@ -35,12 +35,12 @@ impl Default for LinuxDevicesInfo {
     fn default() -> Self {
         let mut new_self = Self {
             audio_servers_info: [
-                AudioServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
                 AudioServerInfo::new(String::from("ALSA"), None), // TODO: Get ALSA version?
+                AudioServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
             ],
             midi_servers_info: [
-                MidiServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
                 MidiServerInfo::new(String::from("ALSA"), None), // TODO: Get ALSA version?
+                MidiServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
             ],
         };
 
@@ -53,15 +53,15 @@ impl Default for LinuxDevicesInfo {
 
 impl OsDevicesInfo for LinuxDevicesInfo {
     fn refresh_audio_servers(&mut self) {
-        // First server is Jack
-        jack_backend::refresh_audio_server(&mut self.audio_servers_info[0]);
-        // Second server is ALSA
-        alsa_backend::refresh_audio_server(&mut self.audio_servers_info[1]);
+        // First server is ALSA
+        alsa_backend::refresh_audio_server(&mut self.audio_servers_info[0]);
+        // Second server is Jack
+        jack_backend::refresh_audio_server(&mut self.audio_servers_info[1]);
     }
 
     fn refresh_midi_servers(&mut self) {
-        // First server is Jack
-        jack_backend::refresh_midi_server(&mut self.midi_servers_info[0]);
+        // Second server is Jack
+        jack_backend::refresh_midi_server(&mut self.midi_servers_info[1]);
     }
 
     fn audio_servers_info(&self) -> &[AudioServerInfo] {
@@ -83,15 +83,19 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E>(
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    match audio_config.server_name.as_str() {
+    let audio_server_name = audio_config.server.get_name_or("Jack");
+    let midi_server_name = midi_config
+        .map(|m| m.server.get_name_or("Jack"))
+        .unwrap_or("");
+
+    match audio_server_name {
         "Jack" => {
             if let Some(midi_config) = midi_config {
-                if midi_config.server_name == "Jack" {
+                if midi_server_name == "Jack" {
                     let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
-                        &audio_config.use_in_devices,
-                        &audio_config.use_out_devices,
-                        &midi_config.use_in_devices,
-                        &midi_config.use_out_devices,
+                        audio_config,
+                        &midi_config.create_in_devices,
+                        &midi_config.create_out_devices,
                         rt_process_handler,
                         error_callback,
                         use_client_name,
@@ -105,8 +109,7 @@ where
             }
 
             let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
-                &audio_config.use_in_devices,
-                &audio_config.use_out_devices,
+                audio_config,
                 &[],
                 &[],
                 rt_process_handler,

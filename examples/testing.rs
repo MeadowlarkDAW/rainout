@@ -1,6 +1,6 @@
 use rusty_daw_io::{
     AudioDeviceConfig, AudioServerConfig, DevicesInfo, MidiDeviceConfig, MidiServerConfig,
-    ProcessInfo, RtProcessHandler, StreamInfo, SystemChannels,
+    ProcessInfo, RtProcessHandler, StreamInfo, UseName, UseU32,
 };
 
 fn main() {
@@ -12,30 +12,33 @@ fn main() {
     dbg!(info.midi_servers_info());
 
     let audio_config = AudioServerConfig {
-        server_name: String::from("Jack"),
-        use_in_devices: vec![AudioDeviceConfig {
+        server: UseName::Auto,
+        system_duplex_device: UseName::Auto,
+        system_in_device: UseName::Auto,
+        system_out_device: UseName::Auto,
+
+        create_in_devices: vec![AudioDeviceConfig {
             id: String::from("audio_in"),
-            system_device: String::from("system"),
-            system_channels: SystemChannels::UpToStereo,
+            system_channels: vec![0, 1],
         }],
-        use_out_devices: vec![AudioDeviceConfig {
+        create_out_devices: vec![AudioDeviceConfig {
             id: String::from("audio_out"),
-            system_device: String::from("system"),
-            system_channels: SystemChannels::UpToStereo,
+            system_channels: vec![0, 1],
         }],
-        use_sample_rate: None,
-        use_max_buffer_size: None,
+
+        sample_rate: UseU32::Auto,
+        max_buffer_size: UseU32::Auto,
     };
 
     let midi_config = MidiServerConfig {
-        server_name: String::from("Jack"),
-        use_in_devices: vec![MidiDeviceConfig {
+        server: UseName::Auto,
+        create_in_devices: vec![MidiDeviceConfig {
             id: String::from("midi_in"),
-            system_port: String::from("system:midi_capture_2"),
+            system_port: UseName::Use(String::from("system:midi_capture_2")),
         }],
-        use_out_devices: vec![MidiDeviceConfig {
+        create_out_devices: vec![MidiDeviceConfig {
             id: String::from("midi_out"),
-            system_port: String::from("system:midi_playback_2"),
+            system_port: UseName::Auto,
         }],
     };
 

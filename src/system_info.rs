@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferSizeInfo {
+    Range { min: u32, max: u32 },
     MaximumSize(u32),
     ConstantSize(u32),
     UnknownSize,
@@ -12,13 +13,19 @@ pub struct SystemAudioDeviceInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DuplexDeviceInfo {
+    pub name: String,
+    pub in_devices: Vec<SystemAudioDeviceInfo>,
+    pub out_devices: Vec<SystemAudioDeviceInfo>,
+    pub sample_rates: Vec<u32>,
+    pub buffer_size: BufferSizeInfo,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AudioServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub system_in_devices: Vec<SystemAudioDeviceInfo>,
-    pub system_out_devices: Vec<SystemAudioDeviceInfo>,
-    pub sample_rates: Vec<u32>,
-    pub buffer_size: BufferSizeInfo,
+    pub devices: Vec<DuplexDeviceInfo>,
     pub available: bool,
 }
 
@@ -27,10 +34,7 @@ impl AudioServerInfo {
         Self {
             name,
             version,
-            system_in_devices: Vec::new(),
-            system_out_devices: Vec::new(),
-            sample_rates: Vec::new(),
-            buffer_size: BufferSizeInfo::UnknownSize,
+            devices: Vec::new(),
             available: false,
         }
     }
@@ -45,8 +49,8 @@ pub struct SystemMidiDeviceInfo {
 pub struct MidiServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub system_in_devices: Vec<SystemMidiDeviceInfo>,
-    pub system_out_devices: Vec<SystemMidiDeviceInfo>,
+    pub in_devices: Vec<SystemMidiDeviceInfo>,
+    pub out_devices: Vec<SystemMidiDeviceInfo>,
     pub available: bool,
 }
 
@@ -55,8 +59,8 @@ impl MidiServerInfo {
         Self {
             name,
             version,
-            system_in_devices: Vec::new(),
-            system_out_devices: Vec::new(),
+            in_devices: Vec::new(),
+            out_devices: Vec::new(),
             available: false,
         }
     }

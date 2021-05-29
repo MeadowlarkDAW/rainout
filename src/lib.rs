@@ -130,24 +130,24 @@ fn check_duplicate_ids(
 ) -> Result<(), SpawnRtThreadError> {
     let mut device_ids = std::collections::HashSet::new();
 
-    for in_device in audio_config.use_in_devices.iter() {
+    for in_device in audio_config.create_in_devices.iter() {
         if !device_ids.insert(in_device.id.clone()) {
             return Err(SpawnRtThreadError::DeviceIdNotUnique(in_device.id.clone()));
         }
     }
-    for out_device in audio_config.use_out_devices.iter() {
+    for out_device in audio_config.create_out_devices.iter() {
         if !device_ids.insert(out_device.id.clone()) {
             return Err(SpawnRtThreadError::DeviceIdNotUnique(out_device.id.clone()));
         }
     }
 
     if let Some(midi_config) = midi_config {
-        for in_device in midi_config.use_in_devices.iter() {
+        for in_device in midi_config.create_in_devices.iter() {
             if !device_ids.insert(in_device.id.clone()) {
                 return Err(SpawnRtThreadError::DeviceIdNotUnique(in_device.id.clone()));
             }
         }
-        for out_device in midi_config.use_out_devices.iter() {
+        for out_device in midi_config.create_out_devices.iter() {
             if !device_ids.insert(out_device.id.clone()) {
                 return Err(SpawnRtThreadError::DeviceIdNotUnique(out_device.id.clone()));
             }
