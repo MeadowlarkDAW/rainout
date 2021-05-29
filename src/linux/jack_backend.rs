@@ -60,8 +60,6 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
 
                     info!("Found Jack audio in device: {}", &system_device_name);
                 }
-
-                debug!("Found Jack audio in device port: {}", &system_port_name);
             }
 
             for system_port_name in system_audio_out_ports.iter() {
@@ -84,8 +82,6 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
 
                     info!("Found Jack audio out device: {}", &system_device_name);
                 }
-
-                debug!("Found Jack audio out device port: {}", &system_port_name);
             }
 
             server.devices.push(DuplexDeviceInfo {
@@ -208,9 +204,9 @@ where
                 name: system_device_name.clone(),
                 ports: vec![system_port_name.clone()],
             });
-        }
 
-        debug!("Found Jack audio in device port: {}", &system_port_name);
+            info!("Found Jack audio in device: {}", &system_device_name);
+        }
     }
     for system_port_name in system_audio_out_ports.iter() {
         let system_device_name = extract_device_name(system_port_name);
@@ -229,9 +225,9 @@ where
                 name: system_device_name.clone(),
                 ports: vec![system_port_name.clone()],
             });
-        }
 
-        debug!("Found Jack audio out device port: {}", &system_port_name);
+            info!("Found Jack audio out device: {}", &system_device_name);
+        }
     }
 
     let system_in_device_name = audio_config.system_in_device.get_name_or("system");
@@ -281,7 +277,6 @@ where
             };
 
             let port_name = format!("{}_{}", &user_device.id, i + 1);
-            debug!("Registering Jack audio in port: {}", &port_name);
             let port = client.register_port(&port_name, jack::AudioIn::default())?;
 
             audio_in_port_names.push(port.name()?);
@@ -332,7 +327,6 @@ where
             };
 
             let port_name = format!("{}_{}", &user_device.id, i + 1);
-            debug!("Registering Jack audio in port: {}", &port_name);
             let port = client.register_port(&port_name, jack::AudioOut::default())?;
 
             audio_out_port_names.push(port.name()?);
@@ -353,8 +347,6 @@ where
             id_index: DeviceIndex::new(device_index),
             system_port: String::from(system_port_name),
         });
-
-        debug!("Registering Jack midi in port: {}", &midi_device.id);
 
         let port = client.register_port(&midi_device.id, jack::MidiIn::default())?;
 
@@ -377,8 +369,6 @@ where
             id_index: DeviceIndex::new(device_index),
             system_port: String::from(system_port_name),
         });
-
-        debug!("Registering Jack midi in port: {}", &midi_device.id);
 
         let port = client.register_port(&midi_device.id, jack::MidiOut::default())?;
 
@@ -428,7 +418,6 @@ where
         .iter()
         .zip(audio_in_connected_port_names)
     {
-        debug!("Connecting Jack port {} to {}", system_in_port, in_port);
         async_client
             .as_client()
             .connect_ports_by_name(&system_in_port, in_port)?;
@@ -437,14 +426,12 @@ where
         .iter()
         .zip(audio_out_connected_port_names)
     {
-        debug!("Connecting Jack port {} to {}", out_port, system_out_port);
         async_client
             .as_client()
             .connect_ports_by_name(out_port, &system_out_port)?;
     }
 
     for (in_port, system_in_port) in midi_in_port_names.iter().zip(midi_in_connected_port_names) {
-        debug!("Connecting Jack port {} to {}", system_in_port, in_port);
         async_client
             .as_client()
             .connect_ports_by_name(&system_in_port, in_port)?;
@@ -453,7 +440,6 @@ where
         .iter()
         .zip(midi_out_connected_port_names)
     {
-        debug!("Connecting Jack port {} to {}", out_port, system_out_port);
         async_client
             .as_client()
             .connect_ports_by_name(out_port, &system_out_port)?;
