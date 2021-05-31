@@ -71,6 +71,21 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     fn midi_servers_info(&self) -> &[MidiServerInfo] {
         &self.midi_servers_info
     }
+
+    fn default_audio_server(&self) -> String {
+        if self.audio_servers_info[0].available {
+            String::from("ALSA")
+        } else {
+            String::from("Jack")
+        }
+    }
+    fn default_midi_config(&self) -> String {
+        if self.midi_servers_info[0].available {
+            String::from("ALSA")
+        } else {
+            String::from("Jack")
+        }
+    }
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E>(
@@ -83,12 +98,9 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E>(
 where
     E: 'static + Send + Sync + FnOnce(StreamError),
 {
-    let audio_server_name = audio_config.server.get_name_or("Jack");
-    let midi_server_name = midi_config
-        .map(|m| m.server.get_name_or("Jack"))
-        .unwrap_or("");
+    let midi_server_name = midi_config.map(|m| m.server.as_str()).unwrap_or("");
 
-    match audio_server_name {
+    match audio_config.server.as_str() {
         "Jack" => {
             if let Some(midi_config) = midi_config {
                 if midi_server_name == "Jack" {

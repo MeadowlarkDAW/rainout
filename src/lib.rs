@@ -97,6 +97,9 @@ trait OsDevicesInfo {
 
     fn audio_servers_info(&self) -> &[AudioServerInfo];
     fn midi_servers_info(&self) -> &[MidiServerInfo];
+
+    fn default_audio_server(&self) -> String;
+    fn default_midi_config(&self) -> String;
 }
 
 pub fn spawn_rt_thread<P, E>(

@@ -240,20 +240,6 @@ where
     let mut audio_in_connected_port_names = Vec::<String>::new();
     let mut audio_in_devices = Vec::<InternalAudioDevice>::new();
     for (device_index, user_device) in audio_config.create_in_devices.iter().enumerate() {
-        if user_device.system_channels.len() == 0 {
-            return Err(SpawnRtThreadError::NoSystemChannelsGiven(
-                user_device.id.clone(),
-            ));
-        }
-
-        audio_in_devices.push(InternalAudioDevice {
-            id_name: user_device.id.clone(),
-            id_index: DeviceIndex::new(device_index),
-            system_device: String::from(system_in_device_name),
-            system_channels: user_device.system_channels.clone(),
-            channels: user_device.system_channels.len() as u16,
-        });
-
         let mut system_device = None;
         for d in system_in_devices.iter() {
             if &d.name == system_in_device_name {
@@ -265,7 +251,25 @@ where
             SpawnRtThreadError::SystemAudioInDeviceNotFound(String::from(system_in_device_name))
         })?;
 
-        for (i, system_channel) in user_device.system_channels.iter().enumerate() {
+        let use_channels = user_device
+            .system_channels
+            .as_channel_index_array(system_device.ports.len() as u16);
+
+        if use_channels.len() == 0 {
+            return Err(SpawnRtThreadError::NoSystemChannelsGiven(
+                user_device.id.clone(),
+            ));
+        }
+
+        audio_in_devices.push(InternalAudioDevice {
+            id_name: user_device.id.clone(),
+            id_index: DeviceIndex::new(device_index),
+            system_device: String::from(system_in_device_name),
+            system_channels: use_channels.clone(),
+            channels: use_channels.len() as u16,
+        });
+
+        for (i, system_channel) in use_channels.iter().enumerate() {
             let system_port_name = match system_device.ports.get(usize::from(*system_channel)) {
                 Some(n) => n,
                 None => {
@@ -290,20 +294,6 @@ where
     let mut audio_out_connected_port_names = Vec::<String>::new();
     let mut audio_out_devices = Vec::<InternalAudioDevice>::new();
     for (device_index, user_device) in audio_config.create_out_devices.iter().enumerate() {
-        if user_device.system_channels.len() == 0 {
-            return Err(SpawnRtThreadError::NoSystemChannelsGiven(
-                user_device.id.clone(),
-            ));
-        }
-
-        audio_out_devices.push(InternalAudioDevice {
-            id_name: user_device.id.clone(),
-            id_index: DeviceIndex::new(device_index),
-            system_device: String::from(system_out_device_name),
-            system_channels: user_device.system_channels.clone(),
-            channels: user_device.system_channels.len() as u16,
-        });
-
         let mut system_device = None;
         for d in system_out_devices.iter() {
             if &d.name == system_out_device_name {
@@ -315,7 +305,25 @@ where
             SpawnRtThreadError::SystemAudioOutDeviceNotFound(String::from(system_out_device_name))
         })?;
 
-        for (i, system_channel) in user_device.system_channels.iter().enumerate() {
+        let use_channels = user_device
+            .system_channels
+            .as_channel_index_array(system_device.ports.len() as u16);
+
+        if use_channels.len() == 0 {
+            return Err(SpawnRtThreadError::NoSystemChannelsGiven(
+                user_device.id.clone(),
+            ));
+        }
+
+        audio_out_devices.push(InternalAudioDevice {
+            id_name: user_device.id.clone(),
+            id_index: DeviceIndex::new(device_index),
+            system_device: String::from(system_out_device_name),
+            system_channels: use_channels.clone(),
+            channels: use_channels.len() as u16,
+        });
+
+        for (i, system_channel) in use_channels.iter().enumerate() {
             let system_port_name = match system_device.ports.get(usize::from(*system_channel)) {
                 Some(n) => n,
                 None => {
@@ -340,7 +348,7 @@ where
     let mut midi_in_connected_port_names = Vec::<String>::new();
     let mut midi_in_devices = Vec::<InternalMidiDevice>::new();
     for (device_index, midi_device) in create_midi_in_devices.iter().enumerate() {
-        let system_port_name = midi_device.system_port.get_name_or("system:midi_capture_1");
+        let system_port_name = &midi_device.system_port;
 
         midi_in_devices.push(InternalMidiDevice {
             id_name: midi_device.id.clone(),
@@ -360,9 +368,7 @@ where
     let mut midi_out_connected_port_names = Vec::<String>::new();
     let mut midi_out_devices = Vec::<InternalMidiDevice>::new();
     for (device_index, midi_device) in create_midi_out_devices.iter().enumerate() {
-        let system_port_name = midi_device
-            .system_port
-            .get_name_or("system:midi_playback_1");
+        let system_port_name = &midi_device.system_port;
 
         midi_out_devices.push(InternalMidiDevice {
             id_name: midi_device.id.clone(),
