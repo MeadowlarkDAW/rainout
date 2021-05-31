@@ -242,13 +242,13 @@ where
     for (device_index, user_device) in audio_config.create_in_devices.iter().enumerate() {
         let mut system_device = None;
         for d in system_in_devices.iter() {
-            if &d.name == system_in_device_name {
+            if &d.name == &system_in_device_name {
                 system_device = Some(d);
                 break;
             }
         }
         let system_device = system_device.ok_or_else(|| {
-            SpawnRtThreadError::SystemAudioInDeviceNotFound(String::from(system_in_device_name))
+            SpawnRtThreadError::SystemAudioInDeviceNotFound(system_in_device_name.clone())
         })?;
 
         let use_channels = user_device
@@ -264,7 +264,7 @@ where
         audio_in_devices.push(InternalAudioDevice {
             id_name: user_device.id.clone(),
             id_index: DeviceIndex::new(device_index),
-            system_device: String::from(system_in_device_name),
+            system_device: system_in_device_name.clone(),
             system_channels: use_channels.clone(),
             channels: use_channels.len() as u16,
         });
@@ -296,13 +296,13 @@ where
     for (device_index, user_device) in audio_config.create_out_devices.iter().enumerate() {
         let mut system_device = None;
         for d in system_out_devices.iter() {
-            if &d.name == system_out_device_name {
+            if &d.name == &system_out_device_name {
                 system_device = Some(d);
                 break;
             }
         }
         let system_device = system_device.ok_or_else(|| {
-            SpawnRtThreadError::SystemAudioOutDeviceNotFound(String::from(system_out_device_name))
+            SpawnRtThreadError::SystemAudioOutDeviceNotFound(system_out_device_name.clone())
         })?;
 
         let use_channels = user_device
@@ -318,7 +318,7 @@ where
         audio_out_devices.push(InternalAudioDevice {
             id_name: user_device.id.clone(),
             id_index: DeviceIndex::new(device_index),
-            system_device: String::from(system_out_device_name),
+            system_device: system_out_device_name.clone(),
             system_channels: use_channels.clone(),
             channels: use_channels.len() as u16,
         });

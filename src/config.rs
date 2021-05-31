@@ -8,11 +8,11 @@ pub enum UseDevice {
 }
 
 impl UseDevice {
-    pub fn get_name_or<'a>(&'a self, default: &'a str) -> &'a str {
+    pub fn get_name_or(&self, default: &str) -> String {
         match self {
-            UseDevice::Auto => default,
-            UseDevice::Name(n) => n.as_str(),
-            UseDevice::None => "",
+            UseDevice::Auto => String::from(default),
+            UseDevice::Name(n) => n.clone(),
+            UseDevice::None => String::from("(none)"),
         }
     }
 }
@@ -87,9 +87,7 @@ pub struct AudioServerConfig {
     pub server: String,
 
     /// The name of the system duplex audio device to use.
-    ///
-    /// Set this to `None` to use the default system device.
-    pub system_duplex_device: Option<String>,
+    pub system_duplex_device: String,
 
     /// The name of the system input device to use.
     ///

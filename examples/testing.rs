@@ -12,6 +12,38 @@ fn main() {
     dbg!(info.midi_servers_info());
 
     let audio_config = AudioServerConfig {
+        server: String::from("ALSA"),
+        system_duplex_device: String::from("HD-Audio Generic, ALCS1200A Analog"),
+        system_in_device: UseDevice::Auto,
+        system_out_device: UseDevice::Auto,
+
+        create_in_devices: vec![AudioDeviceConfig {
+            id: String::from("audio_in"),
+            system_channels: UseChannels::UpToFirstTwo,
+        }],
+        create_out_devices: vec![AudioDeviceConfig {
+            id: String::from("audio_out"),
+            system_channels: UseChannels::UpToFirstTwo,
+        }],
+
+        sample_rate: None,
+        max_buffer_size: None,
+    };
+
+    let midi_config = MidiServerConfig {
+        server: String::from("ALSA"),
+        create_in_devices: vec![MidiDeviceConfig {
+            id: String::from("midi_in"),
+            system_port: String::from("system:midi_capture_2"),
+        }],
+        create_out_devices: vec![MidiDeviceConfig {
+            id: String::from("midi_out"),
+            system_port: String::from("system:midi_playback_1"),
+        }],
+    };
+
+    /*
+    let audio_config = AudioServerConfig {
         server: String::from("Jack"),
         system_duplex_device: None,
         system_in_device: UseDevice::Auto,
@@ -41,6 +73,7 @@ fn main() {
             system_port: String::from("system:midi_playback_1"),
         }],
     };
+    */
 
     let stream_handle = rusty_daw_io::spawn_rt_thread(
         &audio_config,

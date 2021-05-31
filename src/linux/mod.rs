@@ -60,6 +60,8 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     }
 
     fn refresh_midi_servers(&mut self) {
+        // First server is ALSA
+        alsa_backend::refresh_midi_server(&mut self.midi_servers_info[0]);
         // Second server is Jack
         jack_backend::refresh_midi_server(&mut self.midi_servers_info[1]);
     }
@@ -101,6 +103,21 @@ where
     let midi_server_name = midi_config.map(|m| m.server.as_str()).unwrap_or("");
 
     match audio_config.server.as_str() {
+        "ALSA" => {
+            let (stream_info, alsa_server_handle) = alsa_backend::spawn_rt_thread(
+                audio_config,
+                &[],
+                &[],
+                rt_process_handler,
+                error_callback,
+                use_client_name,
+            )?;
+
+            return Ok(LinuxStreamHandle {
+                stream_info,
+                _jack_server_handle: None,
+            });
+        }
         "Jack" => {
             if let Some(midi_config) = midi_config {
                 if midi_server_name == "Jack" {

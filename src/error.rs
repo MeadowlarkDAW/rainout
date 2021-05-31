@@ -8,7 +8,10 @@ pub enum SpawnRtThreadError {
     SystemOutChannelNotFound(String, u16),
     NoSystemChannelsGiven(String),
     DeviceIdNotUnique(String),
+    CouldNotSetAutoSampleRate,
+    CouldNotSetSampleRate(u32),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
+    Other(String),
 }
 
 impl std::error::Error for SpawnRtThreadError {}
@@ -74,8 +77,24 @@ impl std::fmt::Display for SpawnRtThreadError {
                     id,
                 )
             }
+            SpawnRtThreadError::CouldNotSetAutoSampleRate => {
+                write!(
+                    f,
+                    "Error spawning rt thread: Could not automatically set sample rate",
+                )
+            }
+            SpawnRtThreadError::CouldNotSetSampleRate(sr) => {
+                write!(
+                    f,
+                    "Error spawning rt thread: Could not set sample rate to {}",
+                    sr
+                )
+            }
             SpawnRtThreadError::PlatformSpecific(e) => {
                 write!(f, "Error spawning rt thread: Platform error: {}", e)
+            }
+            SpawnRtThreadError::Other(e) => {
+                write!(f, "Error spawning rt thread: {}", e)
             }
         }
     }
