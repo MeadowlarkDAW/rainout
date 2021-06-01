@@ -5,6 +5,7 @@ use linux::{LinuxDevicesInfo, LinuxStreamHandle};
 
 pub mod audio_buffer;
 pub mod config;
+pub mod config_helper;
 pub mod error;
 pub mod midi_buffer;
 pub mod stream_info;
@@ -12,6 +13,7 @@ pub mod system_info;
 
 pub use audio_buffer::*;
 pub use config::*;
+pub use config_helper::*;
 pub use midi_buffer::*;
 pub use stream_info::*;
 pub use system_info::*;

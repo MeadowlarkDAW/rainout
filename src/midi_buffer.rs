@@ -1,5 +1,5 @@
 // TODO: Increase message size to allow more complex midi messages?
-pub const MAX_MIDI_MSG_SIZE: usize = 3;
+pub const MAX_MIDI_MSG_SIZE: usize = 8;
 
 pub const MIDI_BUFFER_SIZE: usize = 1024;
 

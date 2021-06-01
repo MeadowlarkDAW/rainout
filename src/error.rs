@@ -7,7 +7,6 @@ pub enum SpawnRtThreadError {
     NoSystemPortsGiven(String),
     DeviceIdNotUnique(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
-    Other(String),
 }
 
 impl std::error::Error for SpawnRtThreadError {}
@@ -60,9 +59,6 @@ impl std::fmt::Display for SpawnRtThreadError {
             }
             SpawnRtThreadError::PlatformSpecific(e) => {
                 write!(f, "Error spawning rt thread: Platform error: {}", e)
-            }
-            SpawnRtThreadError::Other(e) => {
-                write!(f, "Error spawning rt thread: {}", e)
             }
         }
     }
