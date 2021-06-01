@@ -1,67 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum UseDevice {
-    Auto,
-    Name(String),
-    None,
-}
-
-impl UseDevice {
-    pub fn get_name_or(&self, default: &str) -> String {
-        match self {
-            UseDevice::Auto => String::from(default),
-            UseDevice::Name(n) => n.clone(),
-            UseDevice::None => String::from("(none)"),
-        }
-    }
-}
-
-impl Default for UseDevice {
-    fn default() -> Self {
-        UseDevice::Auto
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum UseChannels {
-    /// Use up to the first two channels in this device.
-    ///
-    /// If the device is mono, then only the single channels will be used.
-    ///
-    /// If the device has more than two channels, then only the first two channels will be used.
-    UpToFirstTwo,
-
-    /// Use all the channels in the device.
-    All,
-
-    /// Use these specific channels (array of channel indexes).
-    Use(Vec<u16>),
-}
-
-impl UseChannels {
-    pub fn as_channel_index_array(&self, max_device_channels: u16) -> Vec<u16> {
-        match self {
-            UseChannels::UpToFirstTwo => {
-                if max_device_channels == 1 {
-                    vec![0]
-                } else {
-                    vec![0, 1]
-                }
-            }
-            UseChannels::All => (0..max_device_channels).collect(),
-            UseChannels::Use(v) => v.clone(),
-        }
-    }
-}
-
-impl Default for UseChannels {
-    fn default() -> Self {
-        UseChannels::UpToFirstTwo
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioDeviceConfig {
     /// The ID to use for this device. This ID is for the "internal" device that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the name of the actual
@@ -77,8 +16,8 @@ pub struct AudioDeviceConfig {
     /// * Speakers Out
     pub id: String,
 
-    /// The channels (of the system device) that this device will be connected to.
-    pub system_channels: UseChannels,
+    /// The ports (of the system device) that this device will be connected to.
+    pub system_ports: Vec<String>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -86,18 +25,22 @@ pub struct AudioServerConfig {
     /// The name of the audio server to use.
     pub server: String,
 
-    /// The name of the system duplex audio device to use.
+    /// The name of the system duplex device to use.
     pub system_duplex_device: String,
 
-    /// The name of the system input device to use.
+    /// The name of half duplex input device to use. This is only relevant when the duplex device has the type `DuplexDeviceType::Multi`.
     ///
     /// This must be a child of the given `system_duplex_device`.
-    pub system_in_device: UseDevice,
+    ///
+    /// Set this to `None` to not use any input device.
+    pub system_half_duplex_in_device: Option<String>,
 
-    // The name of the system output device to use.
+    /// The name of half duplex output device to use. This is only relevant when the duplex device has the type `DuplexDeviceType::Multi`.
     ///
     /// This must be a child of the given `system_duplex_device`.
-    pub system_out_device: UseDevice,
+    ///
+    /// Set this to `None` to not use any outputdevice.
+    pub system_half_duplex_out_device: Option<String>,
 
     /// The audio input devices to create/use. These devices are the "internal" devices that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the actual

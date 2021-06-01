@@ -2,14 +2,10 @@
 pub enum SpawnRtThreadError {
     AudioServerUnavailable(String),
     SystemDuplexDeviceNotFound(String),
-    SystemAudioInDeviceNotFound(String),
-    SystemAudioOutDeviceNotFound(String),
-    SystemInChannelNotFound(String, u16),
-    SystemOutChannelNotFound(String, u16),
-    NoSystemChannelsGiven(String),
+    SystemHalfDuplexDeviceNotFound(String),
+    SystemPortNotFound(String, String),
+    NoSystemPortsGiven(String),
     DeviceIdNotUnique(String),
-    CouldNotSetAutoSampleRate,
-    CouldNotSetSampleRate(u32),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
     Other(String),
 }
@@ -33,40 +29,25 @@ impl std::fmt::Display for SpawnRtThreadError {
                     device
                 )
             }
-            SpawnRtThreadError::SystemAudioInDeviceNotFound(device) => {
+            SpawnRtThreadError::SystemHalfDuplexDeviceNotFound(device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system input audio device {} could not be found",
+                    "Error spawning rt thread: The system half duplex audio device {} could not be found",
                     device
                 )
             }
-            SpawnRtThreadError::SystemAudioOutDeviceNotFound(device) => {
+            SpawnRtThreadError::SystemPortNotFound(port, device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system output audio device {} could not be found",
-                    device
-                )
-            }
-            SpawnRtThreadError::SystemInChannelNotFound(device, channel) => {
-                write!(
-                    f,
-                    "Error spawning rt thread: The system audio device {} does not have the input channel {}",
+                    "Error spawning rt thread: The system port {} could not be found. This port was requested for the device with id {}",
+                    port,
                     device,
-                    channel,
                 )
             }
-            SpawnRtThreadError::SystemOutChannelNotFound(device, channel) => {
+            SpawnRtThreadError::NoSystemPortsGiven(id) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system audio device {} does not have the output channel {}",
-                    device,
-                    channel,
-                )
-            }
-            SpawnRtThreadError::NoSystemChannelsGiven(id) => {
-                write!(
-                    f,
-                    "Error spawning rt thread: No system channels were set for the device with id {}",
+                    "Error spawning rt thread: No system ports were set for the device with id {}",
                     id,
                 )
             }
@@ -75,19 +56,6 @@ impl std::fmt::Display for SpawnRtThreadError {
                     f,
                     "Error spawning rt thread: Two or more devices have the same id {}",
                     id,
-                )
-            }
-            SpawnRtThreadError::CouldNotSetAutoSampleRate => {
-                write!(
-                    f,
-                    "Error spawning rt thread: Could not automatically set sample rate",
-                )
-            }
-            SpawnRtThreadError::CouldNotSetSampleRate(sr) => {
-                write!(
-                    f,
-                    "Error spawning rt thread: Could not set sample rate to {}",
-                    sr
                 )
             }
             SpawnRtThreadError::PlatformSpecific(e) => {

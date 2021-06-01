@@ -33,11 +33,14 @@ pub struct InternalAudioDevice {
     /// to the realtime thread for communication on what device to use.
     pub id_index: DeviceIndex,
 
-    /// The system device this device is connected to.
-    pub system_device: String,
+    /// The name of the system duplex device this device is connected to.
+    pub system_duplex_device: String,
 
-    /// The channels of the system device (by index) that are connected to this device.
-    pub system_channels: Vec<u16>,
+    /// The name of the system half duplex device this device is connected to.
+    pub system_half_duplex_device: Option<String>,
+
+    /// The ports of the system device that are connected to this device.
+    pub system_ports: Vec<String>,
 
     /// The number of channels in this device.
     pub channels: u16,

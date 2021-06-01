@@ -7,16 +7,27 @@ pub enum BufferSizeInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SystemAudioDeviceInfo {
+pub struct HalfDuplexDeviceInfo {
     pub name: String,
-    pub channels: u16,
+    pub ports: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DuplexDeviceType {
+    SingleDevice {
+        in_ports: Vec<String>,
+        out_ports: Vec<String>,
+    },
+    MultiDevice {
+        in_devices: Vec<HalfDuplexDeviceInfo>,
+        out_devices: Vec<HalfDuplexDeviceInfo>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DuplexDeviceInfo {
     pub name: String,
-    pub in_devices: Vec<SystemAudioDeviceInfo>,
-    pub out_devices: Vec<SystemAudioDeviceInfo>,
+    pub devices: DuplexDeviceType,
     pub sample_rates: Vec<u32>,
     pub buffer_size: BufferSizeInfo,
 }
@@ -41,7 +52,7 @@ impl AudioServerInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SystemMidiDeviceInfo {
+pub struct MidiDeviceInfo {
     pub name: String,
 }
 
@@ -49,8 +60,8 @@ pub struct SystemMidiDeviceInfo {
 pub struct MidiServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub in_devices: Vec<SystemMidiDeviceInfo>,
-    pub out_devices: Vec<SystemMidiDeviceInfo>,
+    pub in_devices: Vec<MidiDeviceInfo>,
+    pub out_devices: Vec<MidiDeviceInfo>,
     pub available: bool,
 }
 

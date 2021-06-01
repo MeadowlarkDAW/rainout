@@ -3,7 +3,6 @@ use super::{
     OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
 };
 
-mod alsa_backend;
 mod jack_backend;
 
 pub struct LinuxStreamHandle<P: RtProcessHandler, E>
@@ -27,19 +26,17 @@ where
 }
 
 pub struct LinuxDevicesInfo {
-    audio_servers_info: [AudioServerInfo; 2],
-    midi_servers_info: [MidiServerInfo; 2],
+    audio_servers_info: [AudioServerInfo; 1],
+    midi_servers_info: [MidiServerInfo; 1],
 }
 
 impl Default for LinuxDevicesInfo {
     fn default() -> Self {
         let mut new_self = Self {
             audio_servers_info: [
-                AudioServerInfo::new(String::from("ALSA"), None), // TODO: Get ALSA version?
                 AudioServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
             ],
             midi_servers_info: [
-                MidiServerInfo::new(String::from("ALSA"), None), // TODO: Get ALSA version?
                 MidiServerInfo::new(String::from("Jack"), None), // TODO: Get Jack version?
             ],
         };
@@ -53,17 +50,13 @@ impl Default for LinuxDevicesInfo {
 
 impl OsDevicesInfo for LinuxDevicesInfo {
     fn refresh_audio_servers(&mut self) {
-        // First server is ALSA
-        alsa_backend::refresh_audio_server(&mut self.audio_servers_info[0]);
-        // Second server is Jack
-        jack_backend::refresh_audio_server(&mut self.audio_servers_info[1]);
+        // First server is Jack
+        jack_backend::refresh_audio_server(&mut self.audio_servers_info[0]);
     }
 
     fn refresh_midi_servers(&mut self) {
-        // First server is ALSA
-        alsa_backend::refresh_midi_server(&mut self.midi_servers_info[0]);
-        // Second server is Jack
-        jack_backend::refresh_midi_server(&mut self.midi_servers_info[1]);
+        // First server is Jack
+        jack_backend::refresh_midi_server(&mut self.midi_servers_info[0]);
     }
 
     fn audio_servers_info(&self) -> &[AudioServerInfo] {
@@ -103,21 +96,6 @@ where
     let midi_server_name = midi_config.map(|m| m.server.as_str()).unwrap_or("");
 
     match audio_config.server.as_str() {
-        "ALSA" => {
-            let (stream_info, alsa_server_handle) = alsa_backend::spawn_rt_thread(
-                audio_config,
-                &[],
-                &[],
-                rt_process_handler,
-                error_callback,
-                use_client_name,
-            )?;
-
-            return Ok(LinuxStreamHandle {
-                stream_info,
-                _jack_server_handle: None,
-            });
-        }
         "Jack" => {
             if let Some(midi_config) = midi_config {
                 if midi_server_name == "Jack" {
