@@ -3,6 +3,11 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::{LinuxDevicesInfo, LinuxStreamHandle};
 
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows::{WindowsDevicesInfo, WindowsStreamHandle};
+
 pub mod audio_buffer;
 pub mod config;
 pub mod config_helper;
@@ -46,6 +51,9 @@ where
 {
     #[cfg(target_os = "linux")]
     os_handle: LinuxStreamHandle<P, E>,
+
+    #[cfg(target_os = "windows")]
+    os_handle: WindowsStreamHandle<P, E>,
 }
 
 impl<P, E> StreamHandle<P, E>
@@ -61,12 +69,14 @@ where
 pub struct DevicesInfo {
     #[cfg(target_os = "linux")]
     os_info: LinuxDevicesInfo,
+
+    #[cfg(target_os = "windows")]
+    os_info: WindowsDevicesInfo,
 }
 
 impl DevicesInfo {
     pub fn new() -> Self {
         Self {
-            #[cfg(target_os = "linux")]
             os_info: Default::default(),
         }
     }
@@ -128,15 +138,30 @@ where
     check_duplicate_ids(audio_config, midi_config)?;
 
     #[cfg(target_os = "linux")]
-    Ok(StreamHandle {
-        os_handle: linux::spawn_rt_thread(
-            audio_config,
-            midi_config,
-            use_client_name,
-            rt_process_handler,
-            error_callback,
-        )?,
-    })
+    {
+        Ok(StreamHandle {
+            os_handle: linux::spawn_rt_thread(
+                audio_config,
+                midi_config,
+                use_client_name,
+                rt_process_handler,
+                error_callback,
+            )?,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Ok(StreamHandle {
+            os_handle: windows::spawn_rt_thread(
+                audio_config,
+                midi_config,
+                use_client_name,
+                rt_process_handler,
+                error_callback,
+            )?,
+        })
+    }
 }
 
 fn check_duplicate_ids(

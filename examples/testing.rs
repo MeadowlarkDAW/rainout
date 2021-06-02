@@ -13,9 +13,7 @@ fn main() {
 
     let audio_config = AudioServerConfig {
         server: String::from("Jack"),
-        system_duplex_device: String::from("Jack"),
-        system_half_duplex_in_device: None,
-        system_half_duplex_out_device: None,
+        system_device: String::from("Jack"),
 
         create_in_devices: vec![AudioDeviceConfig {
             id: String::from("audio_in"),

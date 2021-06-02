@@ -6,27 +6,20 @@ pub enum BufferSizeInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HalfDuplexDeviceInfo {
-    pub name: String,
-    pub ports: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum DuplexDeviceType {
-    Full {
+pub enum SystemDevicePorts {
+    Duplex {
         in_ports: Vec<String>,
         out_ports: Vec<String>,
     },
-    Half {
-        in_devices: Vec<HalfDuplexDeviceInfo>,
-        out_devices: Vec<HalfDuplexDeviceInfo>,
+    PlaybackOnly {
+        ports: Vec<String>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DuplexDeviceInfo {
+pub struct SystemDeviceInfo {
     pub name: String,
-    pub devices: DuplexDeviceType,
+    pub ports: SystemDevicePorts,
     pub sample_rates: Vec<u32>,
     pub buffer_size: BufferSizeInfo,
 }
@@ -35,7 +28,7 @@ pub struct DuplexDeviceInfo {
 pub struct AudioServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub devices: Vec<DuplexDeviceInfo>,
+    pub devices: Vec<SystemDeviceInfo>,
     pub available: bool,
 }
 

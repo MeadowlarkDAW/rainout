@@ -1,8 +1,6 @@
 use eframe::{egui, epi};
 
-use rusty_daw_io::{
-    BufferSizeSelection, DeviceIOConfigHelper, DeviceIOConfigState, HalfDuplexSelection,
-};
+use rusty_daw_io::{BufferSizeSelection, DeviceIOConfigHelper, DeviceIOConfigState};
 
 fn main() {
     let app = DemoApp::default();
@@ -96,50 +94,17 @@ impl epi::App for DemoApp {
                 if config_helper.current_server_available() {
                     // Duplex device
 
-                    let options = &config_helper.duplex_device().options;
+                    let options = &config_helper.audio_device().options;
                     // We can opt-out of showing the user available duplex devices if there is only one.
                     // Audio servers like Jack will only ever have one "duplex device".
                     if options.len() > 1 {
                         egui::ComboBox::from_label("Device")
-                            .selected_text(&options[config_helper.duplex_device().selected])
+                            .selected_text(&options[config_helper.audio_device().selected])
                             .show_ui(ui, |ui| {
                                 for (i, option) in options.iter().enumerate() {
-                                    ui.selectable_value(&mut config_state.duplex_device, i, option);
+                                    ui.selectable_value(&mut config_state.audio_device, i, option);
                                 }
                             });
-                    }
-
-                    // Half Duplex devices
-
-                    match config_helper.half_duplex_devices() {
-                        HalfDuplexSelection::NotRelevant => {} // Duplex device doesn't have configurable in/out devices, so don't show anything to the user.
-                        HalfDuplexSelection::Relevant {
-                            half_duplex_in,
-                            half_duplex_out,
-                        } => {
-                            egui::ComboBox::from_label("Input")
-                                .selected_text(&half_duplex_in.options[half_duplex_in.selected])
-                                .show_ui(ui, |ui| {
-                                    for (i, option) in half_duplex_in.options.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut config_state.half_duplex_in_device,
-                                            i,
-                                            option,
-                                        );
-                                    }
-                                });
-                            egui::ComboBox::from_label("Output")
-                                .selected_text(&half_duplex_out.options[half_duplex_out.selected])
-                                .show_ui(ui, |ui| {
-                                    for (i, option) in half_duplex_out.options.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut config_state.half_duplex_out_device,
-                                            i,
-                                            option,
-                                        );
-                                    }
-                                });
-                        }
                     }
 
                     // Sample rate
@@ -185,15 +150,19 @@ impl epi::App for DemoApp {
 
                     ui.separator();
 
-                    ui.label(format!(
-                        "Using sample rate: {}",
-                        config_helper.current_sample_rate()
-                    ));
-                    ui.label(format!(
-                        "Estimated latency: {} frames ({:.1} ms)",
-                        config_helper.estimated_latency(),
-                        config_helper.estimated_latency_ms()
-                    ));
+                    if config_helper.audio_device_selected() {
+                        if let Some(info) = config_helper.audio_config_info() {
+                            ui.label(format!("Using sample rate: {}", info.sample_rate));
+                            ui.label(format!(
+                                "Estimated latency: {} frames ({:.1} ms)",
+                                info.estimated_latency, info.estimated_latency_ms,
+                            ));
+                        } else {
+                            ui.label("Cannot start audio engine because of an unkown error.");
+                        }
+                    } else {
+                        ui.label("Cannot start audio engine. No device is selected.");
+                    }
                 } else {
                     ui.label(format!(
                         "{} audio server is unavailable",
