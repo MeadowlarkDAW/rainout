@@ -26,21 +26,7 @@ pub struct AudioServerConfig {
     pub server: String,
 
     /// The name of the system duplex device to use.
-    pub system_duplex_device: String,
-
-    /// The name of half duplex input device to use. This is only relevant when the duplex device has the type `DuplexDeviceType::Multi`.
-    ///
-    /// This must be a child of the given `system_duplex_device`.
-    ///
-    /// Set this to `None` to not use any input device.
-    pub system_half_duplex_in_device: Option<String>,
-
-    /// The name of half duplex output device to use. This is only relevant when the duplex device has the type `DuplexDeviceType::Multi`.
-    ///
-    /// This must be a child of the given `system_duplex_device`.
-    ///
-    /// Set this to `None` to not use any outputdevice.
-    pub system_half_duplex_out_device: Option<String>,
+    pub system_device: String,
 
     /// The audio input devices to create/use. These devices are the "internal" devices that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the actual
@@ -55,7 +41,8 @@ pub struct AudioServerConfig {
 
     /// The audio output devices to create/use. These devices are the "internal" devices that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the actual
-    /// system hardware device that these "internal" devices are connected to.
+    /// system hardware device that these "internal" devices are connected to. This will return an error if the system
+    /// device is playback only.
     ///
     /// Examples of IDs can include:
     ///
