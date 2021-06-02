@@ -6,20 +6,10 @@ pub enum BufferSizeInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SystemDevicePorts {
-    Duplex {
-        in_ports: Vec<String>,
-        out_ports: Vec<String>,
-    },
-    PlaybackOnly {
-        ports: Vec<String>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct SystemDeviceInfo {
     pub name: String,
-    pub ports: SystemDevicePorts,
+    pub in_ports: Vec<String>,
+    pub out_ports: Vec<String>,
     pub sample_rates: Vec<u32>,
     pub buffer_size: BufferSizeInfo,
 }

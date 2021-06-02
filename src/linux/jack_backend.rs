@@ -4,7 +4,7 @@ use crate::{
     AudioDeviceBuffer, AudioServerConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
     InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig, MidiDeviceInfo,
     MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
-    SystemDeviceInfo, SystemDevicePorts,
+    SystemDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
@@ -25,15 +25,18 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
                 jack::PortFlags::IS_INPUT,
             );
 
-            server.devices.push(SystemDeviceInfo {
-                name: String::from("Jack System"),
-                ports: SystemDevicePorts::Duplex {
+            if system_audio_out_ports.len() == 0 {
+                info!("Warning: Jack system device has no available audio outputs.");
+            } else {
+                // The API only allows devices with playback.
+                server.devices.push(SystemDeviceInfo {
+                    name: String::from("Jack Server"),
                     in_ports: system_audio_in_ports,
                     out_ports: system_audio_out_ports,
-                },
-                sample_rates: vec![client.sample_rate() as u32],
-                buffer_size: BufferSizeInfo::ConstantSize(client.buffer_size() as u32),
-            });
+                    sample_rates: vec![client.sample_rate() as u32],
+                    buffer_size: BufferSizeInfo::ConstantSize(client.buffer_size() as u32),
+                });
+            }
 
             server.available = true;
         }

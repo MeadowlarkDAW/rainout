@@ -1,4 +1,4 @@
-use crate::{AudioServerConfig, BufferSizeInfo, DevicesInfo, SystemDeviceInfo, SystemDevicePorts};
+use crate::{AudioServerConfig, BufferSizeInfo, DevicesInfo};
 
 pub static DEFAULT_BUFFER_SIZE: u32 = 512;
 
@@ -332,13 +332,10 @@ impl DeviceIOConfigHelper {
     pub fn audio_device_playback_only(&self) -> bool {
         // First option is "None"
         if self.device_selection.selected > 0 {
-            if let SystemDevicePorts::PlaybackOnly { .. } = &self.devices_info.audio_servers_info()
-                [self.audio_server_selection.selected]
+            return self.devices_info.audio_servers_info()[self.audio_server_selection.selected]
                 .devices[self.device_selection.selected - 1]
-                .ports
-            {
-                return true;
-            }
+                .in_ports
+                .is_empty();
         }
         false
     }
