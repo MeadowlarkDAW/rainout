@@ -72,7 +72,7 @@ pub struct AudioServerConfig {
     /// The maximum number of frames per channel.
     ///
     /// Set this to `None` to use the default settings of the system device.
-    pub max_buffer_size: Option<u32>,
+    pub buffer_size: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferSizeInfo {
     Range { min: u32, max: u32 },
-    MaximumSize(u32),
     ConstantSize(u32),
     UnknownSize,
 }
@@ -14,11 +13,11 @@ pub struct HalfDuplexDeviceInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DuplexDeviceType {
-    SingleDevice {
+    Full {
         in_ports: Vec<String>,
         out_ports: Vec<String>,
     },
-    MultiDevice {
+    Half {
         in_devices: Vec<HalfDuplexDeviceInfo>,
         out_devices: Vec<HalfDuplexDeviceInfo>,
     },

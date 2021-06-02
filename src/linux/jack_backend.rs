@@ -26,19 +26,29 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
             );
 
             server.devices.push(DuplexDeviceInfo {
-                name: String::from("Jack"),
-                devices: DuplexDeviceType::SingleDevice {
+                name: String::from("Jack System Device"),
+                devices: DuplexDeviceType::Full {
                     in_ports: system_audio_in_ports,
                     out_ports: system_audio_out_ports,
                 },
                 sample_rates: vec![client.sample_rate() as u32],
-                buffer_size: BufferSizeInfo::MaximumSize(client.buffer_size() as u32),
+                buffer_size: BufferSizeInfo::ConstantSize(client.buffer_size() as u32),
             });
 
             server.available = true;
         }
         Err(e) => {
             server.available = false;
+
+            server.devices.push(DuplexDeviceInfo {
+                name: String::from("Unavailable"),
+                devices: DuplexDeviceType::Full {
+                    in_ports: vec![],
+                    out_ports: vec![],
+                },
+                sample_rates: vec![],
+                buffer_size: BufferSizeInfo::UnknownSize,
+            });
 
             info!("Jack server is unavailable: {}", e);
         }
@@ -249,7 +259,7 @@ where
         midi_in: midi_in_devices,
         midi_out: midi_out_devices,
         sample_rate: sample_rate as u32,
-        audio_buffer_size: BufferSizeInfo::MaximumSize(max_audio_buffer_size),
+        audio_buffer_size: BufferSizeInfo::ConstantSize(max_audio_buffer_size),
     };
 
     rt_process_handler.init(&stream_info);

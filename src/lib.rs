@@ -84,6 +84,13 @@ impl DevicesInfo {
     pub fn midi_servers_info(&self) -> &[MidiServerInfo] {
         self.os_info.midi_servers_info()
     }
+
+    pub fn estimated_latency(&self, audio_config: &AudioServerConfig) -> u32 {
+        self.os_info.estimated_latency(audio_config)
+    }
+    pub fn sample_rate(&self, audio_config: &AudioServerConfig) -> u32 {
+        self.os_info.sample_rate(audio_config)
+    }
 }
 
 trait OsStreamHandle {
@@ -102,6 +109,9 @@ trait OsDevicesInfo {
 
     fn default_audio_server(&self) -> String;
     fn default_midi_config(&self) -> String;
+
+    fn estimated_latency(&self, audio_config: &AudioServerConfig) -> u32;
+    fn sample_rate(&self, audio_config: &AudioServerConfig) -> u32;
 }
 
 pub fn spawn_rt_thread<P, E>(

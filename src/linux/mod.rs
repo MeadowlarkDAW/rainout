@@ -1,6 +1,6 @@
 use super::{
-    AudioServerConfig, AudioServerInfo, MidiServerConfig, MidiServerInfo, OsDevicesInfo,
-    OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    AudioServerConfig, AudioServerInfo, BufferSizeInfo, MidiServerConfig, MidiServerInfo,
+    OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
 };
 
 mod jack_backend;
@@ -80,6 +80,42 @@ impl OsDevicesInfo for LinuxDevicesInfo {
         } else {
             String::from("Jack")
         }
+    }
+
+    fn estimated_latency(&self, audio_config: &AudioServerConfig) -> u32 {
+        match audio_config.server.as_str() {
+            "Jack" => {
+                if self.audio_servers_info[0].available {
+                    // First server is Jack.
+                    // Jack only ever uses one "duplex device".
+                    // Buffer size in Jack is always constant.
+                    if let BufferSizeInfo::ConstantSize(size) =
+                        &self.audio_servers_info[0].devices[0].buffer_size
+                    {
+                        return *size;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        0
+    }
+
+    fn sample_rate(&self, audio_config: &AudioServerConfig) -> u32 {
+        match audio_config.server.as_str() {
+            "Jack" => {
+                if self.audio_servers_info[0].available {
+                    // First server is Jack.
+                    // Jack only ever uses one "duplex device".
+                    // Only one sample rate is available, which is the sample rate of the running Jack server.
+                    return self.audio_servers_info[0].devices[0].sample_rates[0];
+                }
+            }
+            _ => {}
+        }
+
+        1
     }
 }
 

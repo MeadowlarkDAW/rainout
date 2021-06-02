@@ -33,7 +33,7 @@ fn main() {
         }],
 
         sample_rate: None,
-        max_buffer_size: None,
+        buffer_size: None,
     };
 
     let midi_config = MidiServerConfig {
