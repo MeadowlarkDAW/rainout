@@ -2,9 +2,9 @@ use log::{debug, info, warn};
 
 use crate::{
     AudioDeviceBuffer, AudioServerConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
-    DuplexDeviceInfo, DuplexDeviceType, InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer,
-    MidiDeviceConfig, MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler,
-    SpawnRtThreadError, StreamError, StreamInfo,
+    InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig, MidiDeviceInfo,
+    MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    SystemDeviceInfo, SystemDevicePorts,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
@@ -25,9 +25,9 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
                 jack::PortFlags::IS_INPUT,
             );
 
-            server.devices.push(DuplexDeviceInfo {
-                name: String::from("Jack System Device"),
-                devices: DuplexDeviceType::Full {
+            server.devices.push(SystemDeviceInfo {
+                name: String::from("Jack System"),
+                ports: SystemDevicePorts::Duplex {
                     in_ports: system_audio_in_ports,
                     out_ports: system_audio_out_ports,
                 },
@@ -39,16 +39,6 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
         }
         Err(e) => {
             server.available = false;
-
-            server.devices.push(DuplexDeviceInfo {
-                name: String::from("Unavailable"),
-                devices: DuplexDeviceType::Full {
-                    in_ports: vec![],
-                    out_ports: vec![],
-                },
-                sample_rates: vec![],
-                buffer_size: BufferSizeInfo::UnknownSize,
-            });
 
             info!("Jack server is unavailable: {}", e);
         }

@@ -95,62 +95,66 @@ impl epi::App for DemoApp {
                     // Duplex device
 
                     let options = &config_helper.audio_device().options;
-                    // We can opt-out of showing the user available duplex devices if there is only one.
-                    // Audio servers like Jack will only ever have one "duplex device".
-                    if options.len() > 1 {
-                        egui::ComboBox::from_label("Device")
-                            .selected_text(&options[config_helper.audio_device().selected])
-                            .show_ui(ui, |ui| {
-                                for (i, option) in options.iter().enumerate() {
-                                    ui.selectable_value(&mut config_state.audio_device, i, option);
-                                }
-                            });
-                    }
-
-                    // Sample rate
-
-                    let options = &config_helper.sample_rate().options;
-                    egui::ComboBox::from_label("Sample Rate")
-                        .selected_text(&options[config_helper.sample_rate().selected])
+                    egui::ComboBox::from_label("Device")
+                        .selected_text(&options[config_helper.audio_device().selected])
                         .show_ui(ui, |ui| {
                             for (i, option) in options.iter().enumerate() {
-                                ui.selectable_value(&mut config_state.sample_rate_index, i, option);
+                                ui.selectable_value(&mut config_state.audio_device, i, option);
                             }
                         });
 
-                    // Buffer size
-
-                    match config_helper.buffer_size() {
-                        BufferSizeSelection::UnknownSize => {
-                            ui.label("(Device does not support constant buffer sizes)");
-                        }
-                        BufferSizeSelection::Constant { auto_value } => {
-                            ui.label(format!("Buffer Size: {}", *auto_value));
-                        }
-                        BufferSizeSelection::Range {
-                            auto_value,
-                            min,
-                            max,
-                            ..
-                        } => {
-                            ui.horizontal(|ui| {
-                                if ui.button("Auto").clicked() {
-                                    config_state.buffer_size = *auto_value;
-                                }
-
-                                ui.add(egui::Slider::new(
-                                    &mut config_state.buffer_size,
-                                    *min..=*max,
-                                ));
-
-                                ui.label("Buffer Size");
-                            });
-                        }
+                    if config_helper.audio_device_playback_only() {
+                        ui.label("(Playback only)");
                     }
 
-                    ui.separator();
-
                     if config_helper.audio_device_selected() {
+                        // Sample rate
+
+                        let options = &config_helper.sample_rate().options;
+                        egui::ComboBox::from_label("Sample Rate")
+                            .selected_text(&options[config_helper.sample_rate().selected])
+                            .show_ui(ui, |ui| {
+                                for (i, option) in options.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut config_state.sample_rate_index,
+                                        i,
+                                        option,
+                                    );
+                                }
+                            });
+
+                        // Buffer size
+
+                        match config_helper.buffer_size() {
+                            BufferSizeSelection::UnknownSize => {
+                                ui.label("Unkown buffer size");
+                            }
+                            BufferSizeSelection::Constant { auto_value } => {
+                                ui.label(format!("Buffer Size: {}", *auto_value));
+                            }
+                            BufferSizeSelection::Range {
+                                auto_value,
+                                min,
+                                max,
+                                ..
+                            } => {
+                                ui.horizontal(|ui| {
+                                    if ui.button("Auto").clicked() {
+                                        config_state.buffer_size = *auto_value;
+                                    }
+
+                                    ui.add(egui::Slider::new(
+                                        &mut config_state.buffer_size,
+                                        *min..=*max,
+                                    ));
+
+                                    ui.label("Buffer Size");
+                                });
+                            }
+                        }
+
+                        ui.separator();
+
                         if let Some(info) = config_helper.audio_config_info() {
                             ui.label(format!("Using sample rate: {}", info.sample_rate));
                             ui.label(format!(
@@ -161,9 +165,13 @@ impl epi::App for DemoApp {
                             ui.label("Cannot start audio engine because of an unkown error.");
                         }
                     } else {
+                        ui.separator();
+
                         ui.label("Cannot start audio engine. No device is selected.");
                     }
                 } else {
+                    ui.separator();
+
                     ui.label(format!(
                         "{} audio server is unavailable",
                         config_helper.audio_server().options[config_helper.audio_server().selected]

@@ -168,12 +168,14 @@ impl DeviceIOConfigHelper {
             self.audio_server_selection.selected = index;
 
             // Update device
-            self.device_selection.options = self.devices_info.audio_servers_info()
-                [self.audio_server_selection.selected]
-                .devices
-                .iter()
-                .map(|d| d.name.clone())
-                .collect();
+            self.device_selection.options = vec![String::from("None")]; // Always have "None" as the first option.
+            self.device_selection.options.append(
+                &mut self.devices_info.audio_servers_info()[self.audio_server_selection.selected]
+                    .devices
+                    .iter()
+                    .map(|d| d.name.clone())
+                    .collect(),
+            );
             self.device_selection.selected = 0;
             state.audio_device = 0;
 
@@ -327,6 +329,20 @@ impl DeviceIOConfigHelper {
         self.device_selection.selected != 0
     }
 
+    pub fn audio_device_playback_only(&self) -> bool {
+        // First option is "None"
+        if self.device_selection.selected > 0 {
+            if let SystemDevicePorts::PlaybackOnly { .. } = &self.devices_info.audio_servers_info()
+                [self.audio_server_selection.selected]
+                .devices[self.device_selection.selected - 1]
+                .ports
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn can_start(&self) -> bool {
         self.current_server_available() && self.audio_device_selected()
     }
@@ -339,11 +355,12 @@ impl DeviceIOConfigHelper {
             return None;
         }
 
-        let device_info = &server_info.devices[self.device_selection.selected];
-
-        if device_info.name == "None" {
+        // First device is "None"
+        if self.device_selection.selected == 0 {
             return None;
         }
+
+        let device_info = &server_info.devices[self.device_selection.selected - 1];
 
         let sample_rate = if self.sample_rate_selection.selected == 0 {
             // First selection is always "Auto"
