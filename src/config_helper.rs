@@ -274,7 +274,21 @@ impl DeviceIOConfigHelper {
         &self.buffer_size_options
     }
 
-    pub fn refresh_audio_servers(&mut self) {}
+    pub fn refresh_audio_servers(&mut self, state: &mut DeviceIOConfigState) {
+        self.os_info.refresh_audio_servers();
+
+        self.audio_server_options.options = self
+            .os_info
+            .audio_servers_info()
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+
+        // Force update on all available options.
+        self.audio_server_options.selected = state.audio_server + 1;
+
+        self.update(state);
+    }
 
     pub fn refresh_midi_servers(&mut self) {}
 

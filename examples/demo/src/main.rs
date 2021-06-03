@@ -75,7 +75,13 @@ impl epi::App for DemoApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
-            ui.heading("Audio Device");
+            ui.horizontal(|ui| {
+                ui.heading("Audio Device");
+
+                if ui.button("Refresh").clicked() {
+                    config_helper.refresh_audio_servers(config_state);
+                }
+            });
 
             ui.separator();
 
