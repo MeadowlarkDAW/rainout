@@ -101,16 +101,20 @@ impl epi::App for DemoApp {
 
                 // Audio device
 
-                if let Some(audio_device_options) = config_helper.audio_device_options() {
+                if let Some(audio_device_options) = config_helper.audio_server_device_options() {
                     egui::ComboBox::from_label("Device")
                         .selected_text(&audio_device_options.options[audio_device_options.selected])
                         .show_ui(ui, |ui| {
                             for (i, option) in audio_device_options.options.iter().enumerate() {
-                                ui.selectable_value(&mut config_state.audio_device, i, option);
+                                ui.selectable_value(
+                                    &mut config_state.audio_server_device,
+                                    i,
+                                    option,
+                                );
                             }
                         });
 
-                    if config_helper.audio_device_playback_only() {
+                    if config_helper.audio_server_device_playback_only() {
                         ui.label("(Playback only)");
                     }
                 }
@@ -173,7 +177,7 @@ impl epi::App for DemoApp {
 
                 // Error States
 
-                if config_helper.audio_device_not_selected() {
+                if config_helper.audio_server_device_not_selected() {
                     ui.label("Cannot start audio engine. No device is selected.");
                 }
 

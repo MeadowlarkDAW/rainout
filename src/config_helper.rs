@@ -2,6 +2,56 @@ use crate::{AudioServerConfig, AudioServerDevices, BufferSizeInfo, DevicesInfo, 
 
 pub static DEFAULT_BUFFER_SIZE: u32 = 512;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioDeviceConfigState {
+    /// The ID to use for this device. This ID is for the "internal" device that appears to the user
+    /// as list of available sources/sends. This is not necessarily the same as the name of the actual
+    /// system hardware device that this "internal" device is connected to.
+    ///
+    /// This ID *must* be unique for each `AudioDeviceConfig` and `MidiDeviceConfig`.
+    ///
+    /// Examples of IDs can include:
+    ///
+    /// * Realtek Device In
+    /// * Drums Mic
+    /// * Headphones Out
+    /// * Speakers Out
+    pub id: String,
+
+    /// The ports (of the system device) that this device will be connected to.
+    pub system_ports: Vec<String>,
+
+    pub enabled: bool,
+}
+
+pub struct DeviceIOConfigState {
+    pub audio_server: usize,
+    pub audio_server_device: usize,
+
+    pub sample_rate_index: usize,
+
+    pub buffer_size: u32,
+
+    pub audio_in_devices: Vec<AudioDeviceConfigState>,
+    pub audio_out_devices: Vec<AudioDeviceConfigState>,
+}
+
+impl Default for DeviceIOConfigState {
+    fn default() -> Self {
+        Self {
+            audio_server: 0,
+            audio_server_device: 0,
+
+            sample_rate_index: 0,
+
+            buffer_size: DEFAULT_BUFFER_SIZE,
+
+            audio_in_devices: Vec::new(),
+            audio_out_devices: Vec::new(),
+        }
+    }
+}
+
 pub struct RadioSelection {
     pub selected: usize,
     pub options: Vec<String>,
@@ -12,28 +62,6 @@ impl RadioSelection {
         Self {
             selected: 0,
             options: Vec::new(),
-        }
-    }
-}
-
-pub struct DeviceIOConfigState {
-    pub audio_server: usize,
-    pub audio_device: usize,
-
-    pub sample_rate_index: usize,
-
-    pub buffer_size: u32,
-}
-
-impl Default for DeviceIOConfigState {
-    fn default() -> Self {
-        Self {
-            audio_server: 0,
-            audio_device: 0,
-
-            sample_rate_index: 0,
-
-            buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
 }
@@ -69,6 +97,9 @@ pub struct DeviceIOConfigHelper {
 
     audio_config: Option<AudioServerConfig>,
     audio_config_info: Option<AudioConfigInfo>,
+
+    audio_in_devices: Vec<AudioDeviceConfigState>,
+    audio_out_devices: Vec<AudioDeviceConfigState>,
 }
 
 impl DeviceIOConfigHelper {
@@ -83,6 +114,9 @@ impl DeviceIOConfigHelper {
 
             audio_config: None,
             audio_config_info: None,
+
+            audio_in_devices: Vec::new(),
+            audio_out_devices: Vec::new(),
         };
 
         new_self.audio_server_options.options = new_self
@@ -130,7 +164,7 @@ impl DeviceIOConfigHelper {
             } else {
                 None
             };
-            state.audio_device = 0;
+            state.audio_server_device = 0;
 
             device_changed = true;
             changed = true;
@@ -139,9 +173,11 @@ impl DeviceIOConfigHelper {
         // Check if device selection changed
 
         if let Some(device_selection) = &mut self.device_selection {
-            if state.audio_device != device_selection.selected {
-                let index = state.audio_device.min(device_selection.options.len() - 1);
-                state.audio_device = index;
+            if state.audio_server_device != device_selection.selected {
+                let index = state
+                    .audio_server_device
+                    .min(device_selection.options.len() - 1);
+                state.audio_server_device = index;
                 device_selection.selected = index;
 
                 device_changed = true;
@@ -181,6 +217,13 @@ impl DeviceIOConfigHelper {
                     }
                 }
 
+                // Make sure there is always at-least one output.
+                let (audio_in_devices, audio_out_devices) = self.default_internal_audio_devices();
+                self.audio_in_devices = audio_in_devices.clone();
+                self.audio_out_devices = audio_out_devices.clone();
+                state.audio_in_devices = audio_in_devices;
+                state.audio_out_devices = audio_out_devices;
+
                 Some(RadioSelection {
                     selected: 0,
                     options: sample_rate_options,
@@ -190,6 +233,11 @@ impl DeviceIOConfigHelper {
 
                 self.buffer_size_options = None;
                 state.buffer_size = DEFAULT_BUFFER_SIZE;
+
+                self.audio_in_devices.clear();
+                self.audio_out_devices.clear();
+                state.audio_in_devices.clear();
+                state.audio_out_devices.clear();
 
                 None
             }
@@ -233,6 +281,82 @@ impl DeviceIOConfigHelper {
             }
         }
 
+        // Check if user audio devices have changed
+
+        // Flippin immutable and mutable borrows. There is probably a way to elegantly use the `current_device()` function,
+        // but I don't feel like messing with it right now. I'm inlining the function here instead.
+        let device = if let Some(devices) =
+            &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
+        {
+            match &devices {
+                AudioServerDevices::SingleDevice(d) => Some(d),
+                AudioServerDevices::MultipleDevices(d) => {
+                    // The first device is "None"
+                    if self.device_selection.as_ref().unwrap().selected > 0 {
+                        Some(&d[self.device_selection.as_ref().unwrap().selected - 1])
+                    } else {
+                        None
+                    }
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(device) = device {
+            if self.audio_in_devices != state.audio_in_devices
+                || self.audio_out_devices != state.audio_out_devices
+            {
+                self.audio_in_devices.clear();
+                self.audio_out_devices.clear();
+
+                for audio_in_device in state.audio_in_devices.iter() {
+                    if audio_in_device.enabled {
+                        let mut all_ports_exist = true;
+                        for port in audio_in_device.system_ports.iter() {
+                            if !device.in_ports.contains(port) {
+                                all_ports_exist = false;
+                                break;
+                            }
+                        }
+
+                        // Disregard config if it is invalid.
+                        if all_ports_exist && !audio_in_device.system_ports.is_empty() {
+                            self.audio_in_devices.push(audio_in_device.clone());
+                        }
+                    }
+                }
+
+                for audio_out_device in state.audio_out_devices.iter() {
+                    if audio_out_device.enabled {
+                        let mut all_ports_exist = true;
+                        for port in audio_out_device.system_ports.iter() {
+                            if !device.out_ports.contains(port) {
+                                all_ports_exist = false;
+                                break;
+                            }
+                        }
+
+                        // Disregard config if it is invalid.
+                        if all_ports_exist && !audio_out_device.system_ports.is_empty() {
+                            self.audio_out_devices.push(audio_out_device.clone());
+                        }
+                    }
+                }
+
+                // Make sure there is always at-least one output.
+                if state.audio_out_devices.is_empty() {
+                    let (_, audio_out_devices) = self.default_internal_audio_devices();
+                    self.audio_out_devices = audio_out_devices;
+                }
+
+                // Make sure state matches.
+                state.audio_in_devices = self.audio_in_devices.clone();
+                state.audio_out_devices = self.audio_out_devices.clone();
+
+                changed = true;
+            }
+        }
+
         // Rebuild audio config if changed
 
         if changed {
@@ -258,11 +382,38 @@ impl DeviceIOConfigHelper {
         changed
     }
 
+    fn default_internal_audio_devices(
+        &self,
+    ) -> (Vec<AudioDeviceConfigState>, Vec<AudioDeviceConfigState>) {
+        let in_devices = Vec::<AudioDeviceConfigState>::new();
+        let mut out_devices = Vec::<AudioDeviceConfigState>::new();
+
+        if let Some(device) = self.current_device() {
+            // Only set a single stereo output for now.
+
+            if device.out_ports.len() == 1 {
+                out_devices.push(AudioDeviceConfigState {
+                    id: String::from("Mono Speaker Out"),
+                    system_ports: vec![device.out_ports[0].clone()],
+                    enabled: true,
+                })
+            } else {
+                out_devices.push(AudioDeviceConfigState {
+                    id: String::from("Stereo Speaker Out"),
+                    system_ports: vec![device.out_ports[0].clone(), device.out_ports[1].clone()],
+                    enabled: true,
+                })
+            }
+        }
+
+        (in_devices, out_devices)
+    }
+
     pub fn audio_server_options(&self) -> &RadioSelection {
         &self.audio_server_options
     }
 
-    pub fn audio_device_options(&self) -> &Option<RadioSelection> {
+    pub fn audio_server_device_options(&self) -> &Option<RadioSelection> {
         &self.device_selection
     }
 
@@ -304,7 +455,7 @@ impl DeviceIOConfigHelper {
         !self.os_info.audio_servers_info()[self.audio_server_options.selected].available
     }
 
-    pub fn audio_device_not_selected(&self) -> bool {
+    pub fn audio_server_device_not_selected(&self) -> bool {
         if let Some(AudioServerDevices::MultipleDevices(_)) =
             &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
         {
@@ -315,7 +466,7 @@ impl DeviceIOConfigHelper {
         false
     }
 
-    pub fn audio_device_playback_only(&self) -> bool {
+    pub fn audio_server_device_playback_only(&self) -> bool {
         if let Some(AudioServerDevices::MultipleDevices(devices)) =
             &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
         {
@@ -331,7 +482,7 @@ impl DeviceIOConfigHelper {
     }
 
     pub fn can_start(&self) -> bool {
-        !self.audio_server_unavailable() && !self.audio_device_not_selected()
+        !self.audio_server_unavailable() && !self.audio_server_device_not_selected()
     }
 
     fn current_device(&self) -> Option<&SystemDeviceInfo> {
