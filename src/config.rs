@@ -25,7 +25,7 @@ pub struct AudioServerConfig {
     /// The name of the audio server to use.
     pub server: String,
 
-    /// The name of the system duplex device to use.
+    /// The name of the system device to use.
     pub system_device: String,
 
     /// The audio input devices to create/use. These devices are the "internal" devices that appears to the user

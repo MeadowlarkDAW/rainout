@@ -3,7 +3,7 @@ use eframe::{egui, epi};
 use rusty_daw_io::{BufferSizeSelection, DeviceIOConfigHelper, DeviceIOConfigState};
 
 fn main() {
-    let app = DemoApp::default();
+    let app = DemoApp::new();
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
 }
@@ -13,11 +13,13 @@ pub struct DemoApp {
     config_helper: DeviceIOConfigHelper,
 }
 
-impl Default for DemoApp {
-    fn default() -> Self {
+impl DemoApp {
+    pub fn new() -> Self {
+        let (config_helper, config_state) = DeviceIOConfigHelper::new();
+
         Self {
-            config_state: Default::default(),
-            config_helper: Default::default(),
+            config_state,
+            config_helper,
         }
     }
 }
@@ -80,25 +82,24 @@ impl epi::App for DemoApp {
             ui.vertical(|ui| {
                 // Audio server (driver model)
 
-                let options = &config_helper.audio_server().options;
+                let audio_server_options = config_helper.audio_server_options();
                 egui::ComboBox::from_label("Driver Model")
-                    .selected_text(&options[config_helper.audio_server().selected])
+                    .selected_text(&audio_server_options.options[audio_server_options.selected])
                     .show_ui(ui, |ui| {
-                        for (i, option) in options.iter().enumerate() {
+                        for (i, option) in audio_server_options.options.iter().enumerate() {
                             ui.selectable_value(&mut config_state.audio_server, i, option);
                         }
                     });
 
                 ui.separator();
 
-                if config_helper.current_server_available() {
-                    // Duplex device
+                // Audio device
 
-                    let options = &config_helper.audio_device().options;
+                if let Some(audio_device_options) = config_helper.audio_device_options() {
                     egui::ComboBox::from_label("Device")
-                        .selected_text(&options[config_helper.audio_device().selected])
+                        .selected_text(&audio_device_options.options[audio_device_options.selected])
                         .show_ui(ui, |ui| {
-                            for (i, option) in options.iter().enumerate() {
+                            for (i, option) in audio_device_options.options.iter().enumerate() {
                                 ui.selectable_value(&mut config_state.audio_device, i, option);
                             }
                         });
@@ -106,75 +107,75 @@ impl epi::App for DemoApp {
                     if config_helper.audio_device_playback_only() {
                         ui.label("(Playback only)");
                     }
+                }
 
-                    if config_helper.audio_device_selected() {
-                        // Sample rate
+                // Sample rate
 
-                        let options = &config_helper.sample_rate().options;
-                        egui::ComboBox::from_label("Sample Rate")
-                            .selected_text(&options[config_helper.sample_rate().selected])
-                            .show_ui(ui, |ui| {
-                                for (i, option) in options.iter().enumerate() {
-                                    ui.selectable_value(
-                                        &mut config_state.sample_rate_index,
-                                        i,
-                                        option,
-                                    );
+                if let Some(sample_rate_options) = config_helper.sample_rate_options() {
+                    egui::ComboBox::from_label("Sample Rate")
+                        .selected_text(&sample_rate_options.options[sample_rate_options.selected])
+                        .show_ui(ui, |ui| {
+                            for (i, option) in sample_rate_options.options.iter().enumerate() {
+                                ui.selectable_value(&mut config_state.sample_rate_index, i, option);
+                            }
+                        });
+                }
+
+                // Buffer
+
+                if let Some(buffer_size_options) = config_helper.buffer_size_options() {
+                    match buffer_size_options {
+                        BufferSizeSelection::UnknownSize => {
+                            ui.label("Unkown buffer size");
+                        }
+                        BufferSizeSelection::Constant { auto_value } => {
+                            ui.label(format!("Buffer Size: {}", *auto_value));
+                        }
+                        BufferSizeSelection::Range {
+                            auto_value,
+                            min,
+                            max,
+                            ..
+                        } => {
+                            ui.horizontal(|ui| {
+                                if ui.button("Auto").clicked() {
+                                    config_state.buffer_size = *auto_value;
                                 }
+
+                                ui.add(egui::Slider::new(
+                                    &mut config_state.buffer_size,
+                                    *min..=*max,
+                                ));
+
+                                ui.label("Buffer Size");
                             });
-
-                        // Buffer size
-
-                        match config_helper.buffer_size() {
-                            BufferSizeSelection::UnknownSize => {
-                                ui.label("Unkown buffer size");
-                            }
-                            BufferSizeSelection::Constant { auto_value } => {
-                                ui.label(format!("Buffer Size: {}", *auto_value));
-                            }
-                            BufferSizeSelection::Range {
-                                auto_value,
-                                min,
-                                max,
-                                ..
-                            } => {
-                                ui.horizontal(|ui| {
-                                    if ui.button("Auto").clicked() {
-                                        config_state.buffer_size = *auto_value;
-                                    }
-
-                                    ui.add(egui::Slider::new(
-                                        &mut config_state.buffer_size,
-                                        *min..=*max,
-                                    ));
-
-                                    ui.label("Buffer Size");
-                                });
-                            }
                         }
-
-                        ui.separator();
-
-                        if let Some(info) = config_helper.audio_config_info() {
-                            ui.label(format!("Using sample rate: {}", info.sample_rate));
-                            ui.label(format!(
-                                "Estimated latency: {} frames ({:.1} ms)",
-                                info.estimated_latency, info.estimated_latency_ms,
-                            ));
-                        } else {
-                            ui.label("Cannot start audio engine because of an unkown error.");
-                        }
-                    } else {
-                        ui.separator();
-
-                        ui.label("Cannot start audio engine. No device is selected.");
                     }
-                } else {
-                    ui.separator();
+                }
 
+                ui.separator();
+
+                // Current Info
+
+                if let Some(info) = config_helper.audio_config_info() {
+                    ui.label(format!("Using sample rate: {}", info.sample_rate));
                     ui.label(format!(
-                        "{} audio server is unavailable",
-                        config_helper.audio_server().options[config_helper.audio_server().selected]
+                        "Estimated latency: {} frames ({:.1} ms)",
+                        info.estimated_latency, info.estimated_latency_ms,
+                    ));
+                }
+
+                // Error States
+
+                if config_helper.audio_device_not_selected() {
+                    ui.label("Cannot start audio engine. No device is selected.");
+                }
+
+                if config_helper.audio_server_unavailable() {
+                    ui.label(format!(
+                        "Cannot start audio engine. {} audio server is unavailable",
+                        config_helper.audio_server_options().options
+                            [config_helper.audio_server_options().selected]
                     ));
                 }
             })

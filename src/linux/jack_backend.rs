@@ -1,16 +1,16 @@
 use log::{debug, info, warn};
 
 use crate::{
-    AudioDeviceBuffer, AudioServerConfig, AudioServerInfo, BufferSizeInfo, DeviceIndex,
-    InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig, MidiDeviceInfo,
-    MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
-    SystemDeviceInfo,
+    AudioDeviceBuffer, AudioServerConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo,
+    DeviceIndex, InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig,
+    MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError,
+    StreamInfo, SystemDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
     info!("Refreshing list of available Jack audio devices...");
 
-    server.devices.clear();
+    server.devices = None;
 
     match jack::Client::new("rustydaw_io_dummy_client", jack::ClientOptions::empty()) {
         Ok((client, _status)) => {
@@ -26,19 +26,22 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
             );
 
             if system_audio_out_ports.len() == 0 {
-                info!("Warning: Jack system device has no available audio outputs.");
+                // This crate only allows devices with playback.
+
+                server.available = false;
+
+                info!("Jack server is unavailable: Jack system device has no available audio outputs.");
             } else {
-                // The API only allows devices with playback.
-                server.devices.push(SystemDeviceInfo {
+                server.devices = Some(AudioServerDevices::SingleDevice(SystemDeviceInfo {
                     name: String::from("Jack Server"),
                     in_ports: system_audio_in_ports,
                     out_ports: system_audio_out_ports,
                     sample_rates: vec![client.sample_rate() as u32],
                     buffer_size: BufferSizeInfo::ConstantSize(client.buffer_size() as u32),
-                });
-            }
+                }));
 
-            server.available = true;
+                server.available = true;
+            }
         }
         Err(e) => {
             server.available = false;

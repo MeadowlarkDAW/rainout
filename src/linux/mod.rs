@@ -1,6 +1,7 @@
 use super::{
-    AudioServerConfig, AudioServerInfo, BufferSizeInfo, MidiServerConfig, MidiServerInfo,
-    OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    AudioServerConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo, MidiServerConfig,
+    MidiServerInfo, OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError,
+    StreamError, StreamInfo,
 };
 
 mod jack_backend;
@@ -82,40 +83,46 @@ impl OsDevicesInfo for LinuxDevicesInfo {
         }
     }
 
-    fn estimated_latency(&self, audio_config: &AudioServerConfig) -> u32 {
+    fn estimated_latency(&self, audio_config: &AudioServerConfig) -> Option<u32> {
         match audio_config.server.as_str() {
             "Jack" => {
                 if self.audio_servers_info[0].available {
                     // First server is Jack.
-                    // Jack only ever uses one "duplex device".
+                    // Jack only ever uses one device.
                     // Buffer size in Jack is always constant.
-                    if let BufferSizeInfo::ConstantSize(size) =
-                        &self.audio_servers_info[0].devices[0].buffer_size
+                    if let Some(AudioServerDevices::SingleDevice(device)) =
+                        &self.audio_servers_info[0].devices
                     {
-                        return *size;
+                        if let BufferSizeInfo::ConstantSize(size) = &device.buffer_size {
+                            return Some(*size);
+                        }
                     }
                 }
             }
             _ => {}
         }
 
-        0
+        None
     }
 
-    fn sample_rate(&self, audio_config: &AudioServerConfig) -> u32 {
+    fn sample_rate(&self, audio_config: &AudioServerConfig) -> Option<u32> {
         match audio_config.server.as_str() {
             "Jack" => {
                 if self.audio_servers_info[0].available {
                     // First server is Jack.
-                    // Jack only ever uses one "duplex device".
+                    // Jack only ever uses one device.
                     // Only one sample rate is available, which is the sample rate of the running Jack server.
-                    return self.audio_servers_info[0].devices[0].sample_rates[0];
+                    if let Some(AudioServerDevices::SingleDevice(device)) =
+                        &self.audio_servers_info[0].devices
+                    {
+                        return Some(device.sample_rates[0]);
+                    }
                 }
             }
             _ => {}
         }
 
-        1
+        None
     }
 }
 

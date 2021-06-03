@@ -15,10 +15,16 @@ pub struct SystemDeviceInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AudioServerDevices {
+    SingleDevice(SystemDeviceInfo),
+    MultipleDevices(Vec<SystemDeviceInfo>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AudioServerInfo {
     pub name: String,
     pub version: Option<String>,
-    pub devices: Vec<SystemDeviceInfo>,
+    pub devices: Option<AudioServerDevices>,
     pub available: bool,
 }
 
@@ -27,7 +33,7 @@ impl AudioServerInfo {
         Self {
             name,
             version,
-            devices: Vec::new(),
+            devices: None,
             available: false,
         }
     }
