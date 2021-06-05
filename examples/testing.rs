@@ -1,6 +1,6 @@
 use rusty_daw_io::{
-    AudioDeviceConfig, AudioServerConfig, DevicesInfo, MidiDeviceConfig, MidiServerConfig,
-    ProcessInfo, RtProcessHandler, StreamInfo,
+    AudioBusConfig, AudioConfig, DevicesInfo, MidiConfig, MidiControllerConfig, ProcessInfo,
+    RtProcessHandler, StreamInfo,
 };
 
 fn main() {
@@ -11,18 +11,18 @@ fn main() {
     dbg!(info.audio_servers_info());
     dbg!(info.midi_servers_info());
 
-    let audio_config = AudioServerConfig {
+    let audio_config = AudioConfig {
         server: String::from("Jack"),
         system_device: String::from("Jack"),
 
-        create_in_devices: vec![AudioDeviceConfig {
+        in_busses: vec![AudioBusConfig {
             id: String::from("audio_in"),
             system_ports: vec![
                 String::from("system:capture_1"),
                 String::from("system:capture_2"),
             ],
         }],
-        create_out_devices: vec![AudioDeviceConfig {
+        out_busses: vec![AudioBusConfig {
             id: String::from("audio_out"),
             system_ports: vec![
                 String::from("system:playback_1"),
@@ -34,13 +34,13 @@ fn main() {
         buffer_size: None,
     };
 
-    let midi_config = MidiServerConfig {
+    let midi_config = MidiConfig {
         server: String::from("Jack"),
-        create_in_devices: vec![MidiDeviceConfig {
+        in_controllers: vec![MidiControllerConfig {
             id: String::from("midi_in"),
             system_port: String::from("system:midi_capture_2"),
         }],
-        create_out_devices: vec![MidiDeviceConfig {
+        out_controllers: vec![MidiControllerConfig {
             id: String::from("midi_out"),
             system_port: String::from("system:midi_playback_1"),
         }],

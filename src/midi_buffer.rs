@@ -66,12 +66,12 @@ impl Default for RawMidi {
     }
 }
 
-pub struct MidiDeviceBuffer {
+pub struct MidiControllerBuffer {
     events: [RawMidi; MIDI_BUFFER_SIZE],
     len: usize,
 }
 
-impl MidiDeviceBuffer {
+impl MidiControllerBuffer {
     pub(crate) fn new() -> Self {
         Self {
             events: [RawMidi::default(); MIDI_BUFFER_SIZE],
@@ -136,7 +136,7 @@ impl MidiDeviceBuffer {
     }
 
     /// Replaces the contents of this buffer with the contents of the given buffer.
-    pub fn clear_and_copy_from(&mut self, buffer: &MidiDeviceBuffer) {
+    pub fn clear_and_copy_from(&mut self, buffer: &MidiControllerBuffer) {
         self.len = buffer.len;
         &mut self.events[0..buffer.len].copy_from_slice(&buffer.events[0..buffer.len]);
     }
@@ -146,7 +146,7 @@ impl MidiDeviceBuffer {
     }
 }
 
-impl std::fmt::Debug for MidiDeviceBuffer {
+impl std::fmt::Debug for MidiControllerBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

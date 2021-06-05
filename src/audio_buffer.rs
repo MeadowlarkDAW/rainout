@@ -1,17 +1,17 @@
 #[derive(Debug)]
-pub struct AudioDeviceBuffer {
+pub struct AudioBusBuffer {
     pub(crate) channel_buffers: Vec<Vec<f32>>,
     pub(crate) frames: usize,
 }
 
-impl AudioDeviceBuffer {
-    pub(crate) fn new(channels: u16, max_buffer_size: u32) -> AudioDeviceBuffer {
+impl AudioBusBuffer {
+    pub(crate) fn new(channels: u16, max_buffer_size: u32) -> AudioBusBuffer {
         let mut channel_buffers = Vec::<Vec<f32>>::new();
         for _ in 0..channels {
             channel_buffers.push(Vec::<f32>::with_capacity(max_buffer_size as usize));
         }
 
-        AudioDeviceBuffer {
+        AudioBusBuffer {
             channel_buffers,
             frames: 0,
         }
@@ -56,14 +56,14 @@ impl AudioDeviceBuffer {
     }
 }
 
-impl std::ops::Index<usize> for AudioDeviceBuffer {
+impl std::ops::Index<usize> for AudioBusBuffer {
     type Output = [f32];
 
     fn index(&self, index: usize) -> &Self::Output {
         self.channel_buffers[index].as_slice()
     }
 }
-impl std::ops::IndexMut<usize> for AudioDeviceBuffer {
+impl std::ops::IndexMut<usize> for AudioBusBuffer {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         self.channel_buffers[index].as_mut_slice()
     }

@@ -1,7 +1,6 @@
 use super::{
-    AudioServerConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo, MidiServerConfig,
-    MidiServerInfo, OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError,
-    StreamError, StreamInfo,
+    AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo, MidiConfig, MidiServerInfo,
+    OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
 };
 
 mod jack_backend;
@@ -83,7 +82,7 @@ impl OsDevicesInfo for LinuxDevicesInfo {
         }
     }
 
-    fn estimated_latency(&self, audio_config: &AudioServerConfig) -> Option<u32> {
+    fn estimated_latency(&self, audio_config: &AudioConfig) -> Option<u32> {
         match audio_config.server.as_str() {
             "Jack" => {
                 if self.audio_servers_info[0].available {
@@ -105,7 +104,7 @@ impl OsDevicesInfo for LinuxDevicesInfo {
         None
     }
 
-    fn sample_rate(&self, audio_config: &AudioServerConfig) -> Option<u32> {
+    fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32> {
         match audio_config.server.as_str() {
             "Jack" => {
                 if self.audio_servers_info[0].available {
@@ -127,8 +126,8 @@ impl OsDevicesInfo for LinuxDevicesInfo {
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E>(
-    audio_config: &AudioServerConfig,
-    midi_config: Option<&MidiServerConfig>,
+    audio_config: &AudioConfig,
+    midi_config: Option<&MidiConfig>,
     use_client_name: Option<String>,
     rt_process_handler: P,
     error_callback: E,
@@ -144,8 +143,8 @@ where
                 if midi_server_name == "Jack" {
                     let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
                         audio_config,
-                        &midi_config.create_in_devices,
-                        &midi_config.create_out_devices,
+                        &midi_config.in_controllers,
+                        &midi_config.out_controllers,
                         rt_process_handler,
                         error_callback,
                         use_client_name,

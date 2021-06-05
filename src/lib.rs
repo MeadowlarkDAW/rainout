@@ -34,12 +34,12 @@ pub trait RtProcessHandler: 'static + Send {
 }
 
 pub struct ProcessInfo<'a> {
-    pub audio_in: &'a [AudioDeviceBuffer],
-    pub audio_out: &'a mut [AudioDeviceBuffer],
+    pub audio_in: &'a [AudioBusBuffer],
+    pub audio_out: &'a mut [AudioBusBuffer],
     pub audio_frames: usize,
 
-    pub midi_in: &'a [MidiDeviceBuffer],
-    pub midi_out: &'a mut [MidiDeviceBuffer],
+    pub midi_in: &'a [MidiControllerBuffer],
+    pub midi_out: &'a mut [MidiControllerBuffer],
 
     pub sample_rate: u32,
 }
@@ -95,10 +95,10 @@ impl DevicesInfo {
         self.os_info.midi_servers_info()
     }
 
-    pub fn estimated_latency(&self, audio_config: &AudioServerConfig) -> Option<u32> {
+    pub fn estimated_latency(&self, audio_config: &AudioConfig) -> Option<u32> {
         self.os_info.estimated_latency(audio_config)
     }
-    pub fn sample_rate(&self, audio_config: &AudioServerConfig) -> Option<u32> {
+    pub fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32> {
         self.os_info.sample_rate(audio_config)
     }
 }
@@ -120,13 +120,13 @@ trait OsDevicesInfo {
     fn default_audio_server(&self) -> String;
     fn default_midi_config(&self) -> String;
 
-    fn estimated_latency(&self, audio_config: &AudioServerConfig) -> Option<u32>;
-    fn sample_rate(&self, audio_config: &AudioServerConfig) -> Option<u32>;
+    fn estimated_latency(&self, audio_config: &AudioConfig) -> Option<u32>;
+    fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32>;
 }
 
 pub fn spawn_rt_thread<P, E>(
-    audio_config: &AudioServerConfig,
-    midi_config: Option<&MidiServerConfig>,
+    audio_config: &AudioConfig,
+    midi_config: Option<&MidiConfig>,
     use_client_name: Option<String>,
     rt_process_handler: P,
     error_callback: E,
@@ -165,31 +165,35 @@ where
 }
 
 fn check_duplicate_ids(
-    audio_config: &AudioServerConfig,
-    midi_config: Option<&MidiServerConfig>,
+    audio_config: &AudioConfig,
+    midi_config: Option<&MidiConfig>,
 ) -> Result<(), SpawnRtThreadError> {
-    let mut device_ids = std::collections::HashSet::new();
+    let mut ids = std::collections::HashSet::new();
 
-    for in_device in audio_config.create_in_devices.iter() {
-        if !device_ids.insert(in_device.id.clone()) {
-            return Err(SpawnRtThreadError::DeviceIdNotUnique(in_device.id.clone()));
+    for in_bus in audio_config.in_busses.iter() {
+        if !ids.insert(in_bus.id.clone()) {
+            return Err(SpawnRtThreadError::DeviceIdNotUnique(in_bus.id.clone()));
         }
     }
-    for out_device in audio_config.create_out_devices.iter() {
-        if !device_ids.insert(out_device.id.clone()) {
-            return Err(SpawnRtThreadError::DeviceIdNotUnique(out_device.id.clone()));
+    for out_bus in audio_config.out_busses.iter() {
+        if !ids.insert(out_bus.id.clone()) {
+            return Err(SpawnRtThreadError::DeviceIdNotUnique(out_bus.id.clone()));
         }
     }
 
     if let Some(midi_config) = midi_config {
-        for in_device in midi_config.create_in_devices.iter() {
-            if !device_ids.insert(in_device.id.clone()) {
-                return Err(SpawnRtThreadError::DeviceIdNotUnique(in_device.id.clone()));
+        for in_controller in midi_config.in_controllers.iter() {
+            if !ids.insert(in_controller.id.clone()) {
+                return Err(SpawnRtThreadError::DeviceIdNotUnique(
+                    in_controller.id.clone(),
+                ));
             }
         }
-        for out_device in midi_config.create_out_devices.iter() {
-            if !device_ids.insert(out_device.id.clone()) {
-                return Err(SpawnRtThreadError::DeviceIdNotUnique(out_device.id.clone()));
+        for out_controller in midi_config.out_controllers.iter() {
+            if !ids.insert(out_controller.id.clone()) {
+                return Err(SpawnRtThreadError::DeviceIdNotUnique(
+                    out_controller.id.clone(),
+                ));
             }
         }
     }

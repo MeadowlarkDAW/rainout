@@ -1,8 +1,6 @@
 use eframe::{egui, epi};
 
-use rusty_daw_io::{
-    AudioDeviceConfigState, BufferSizeSelection, DeviceIOConfigHelper, DeviceIOConfigState,
-};
+use rusty_daw_io::{BufferSizeSelection, DeviceIOConfigHelper, DeviceIOConfigState};
 
 static SPACING: f32 = 30.0;
 
@@ -92,7 +90,7 @@ impl DemoApp {
         } = self;
 
         ui.horizontal(|ui| {
-            ui.heading("Audio Device");
+            ui.heading("Audio Devices");
 
             if ui.button("Refresh").clicked() {
                 config_helper.refresh_audio_servers(config_state);
@@ -209,44 +207,40 @@ impl DemoApp {
 
             ui.add_space(SPACING);
 
-            // User Audio Outputs
+            // User Audio Output Busses
 
-            if let Some((device_configs, available_ports)) =
-                config_helper.user_audio_out_device_config()
-            {
-                ui.heading("Outputs");
+            if let Some((bus_configs, available_ports)) = config_helper.audio_out_bus_config() {
+                ui.heading("Output Busses");
 
                 ui.separator();
 
-                for (device_i, (device, device_state)) in device_configs
+                for (bus_i, (bus, bus_state)) in bus_configs
                     .iter()
-                    .zip(config_state.user_audio_out_devices.iter_mut())
+                    .zip(config_state.audio_out_busses.iter_mut())
                     .enumerate()
                 {
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut device_state.id).hint_text(&device.id),
-                        );
+                        ui.add(egui::TextEdit::singleline(&mut bus_state.id).hint_text(&bus.id));
                         ui.label("Name");
 
-                        // Don't allow user to delete the only output device.
-                        if device_configs.len() > 1 {
-                            if ui.button("Remove Device").clicked() {
+                        // Don't allow user to delete the only output bus.
+                        if bus_configs.len() > 1 {
+                            if ui.button("Remove").clicked() {
                                 // Mark the device for deletion.
-                                device_state.do_delete = true;
+                                bus_state.do_delete = true;
                             }
                         }
                     });
 
-                    for (port_i, (port, port_state)) in device
+                    for (port_i, (port, port_state)) in bus
                         .system_ports
                         .iter()
-                        .zip(device_state.system_ports.iter_mut())
+                        .zip(bus_state.system_ports.iter_mut())
                         .enumerate()
                     {
                         ui.horizontal(|ui| {
                             // egui requires a unique id for each combo box
-                            let cb_id = format!("user_audio_out_device_{}_{}", device_i, port_i);
+                            let cb_id = format!("user_audio_out_bus_{}_{}", bus_i, port_i);
 
                             egui::ComboBox::from_id_source(cb_id)
                                 .selected_text(&port)
@@ -261,7 +255,7 @@ impl DemoApp {
                                 });
 
                             // Don't allow user to delete the only port.
-                            if device.system_ports.len() > 1 {
+                            if bus.system_ports.len() > 1 {
                                 if ui.small_button("x").clicked() {
                                     // Rename a port to "" to automatically delete the port.
                                     *port_state = String::from("");
@@ -271,17 +265,17 @@ impl DemoApp {
                     }
 
                     if ui.button("Add Port").clicked() {
-                        device_state.system_ports.push(available_ports[0].clone());
+                        bus_state.system_ports.push(available_ports[0].clone());
                     }
 
                     ui.separator();
                 }
 
-                if ui.button("Add Output Device").clicked() {
-                    if let Some(new_device) = config_helper
-                        .new_user_audio_out_device(config_state.user_audio_out_devices.len() + 1)
+                if ui.button("Add Output Bus").clicked() {
+                    if let Some(new_bus) =
+                        config_helper.new_audio_out_bus(config_state.audio_out_busses.len() + 1)
                     {
-                        config_state.user_audio_out_devices.push(new_device);
+                        config_state.audio_out_busses.push(new_bus);
                     }
                 }
 
@@ -290,41 +284,37 @@ impl DemoApp {
 
             ui.add_space(SPACING);
 
-            // User Audio Inputs
+            // User Audio Input Busses
 
-            if let Some((device_configs, available_ports)) =
-                config_helper.user_audio_in_device_config()
-            {
-                ui.heading("Inputs");
+            if let Some((bus_configs, available_ports)) = config_helper.audio_in_bus_config() {
+                ui.heading("Input Busses");
 
                 ui.separator();
 
-                for (device_i, (device, device_state)) in device_configs
+                for (bus_i, (bus, bus_state)) in bus_configs
                     .iter()
-                    .zip(config_state.user_audio_in_devices.iter_mut())
+                    .zip(config_state.audio_in_busses.iter_mut())
                     .enumerate()
                 {
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut device_state.id).hint_text(&device.id),
-                        );
+                        ui.add(egui::TextEdit::singleline(&mut bus_state.id).hint_text(&bus.id));
                         ui.label("Name");
 
-                        if ui.button("Remove Device").clicked() {
-                            // Mark the device for deletion.
-                            device_state.do_delete = true;
+                        if ui.button("Remove").clicked() {
+                            // Mark the bus for deletion.
+                            bus_state.do_delete = true;
                         }
                     });
 
-                    for (port_i, (port, port_state)) in device
+                    for (port_i, (port, port_state)) in bus
                         .system_ports
                         .iter()
-                        .zip(device_state.system_ports.iter_mut())
+                        .zip(bus_state.system_ports.iter_mut())
                         .enumerate()
                     {
                         ui.horizontal(|ui| {
                             // egui requires a unique id for each combo box
-                            let cb_id = format!("user_audio_in_device_{}_{}", device_i, port_i);
+                            let cb_id = format!("user_audio_in_bus_{}_{}", bus_i, port_i);
 
                             egui::ComboBox::from_id_source(cb_id)
                                 .selected_text(&port)
@@ -339,7 +329,7 @@ impl DemoApp {
                                 });
 
                             // Don't allow user to delete the only port.
-                            if device.system_ports.len() > 1 {
+                            if bus.system_ports.len() > 1 {
                                 if ui.small_button("x").clicked() {
                                     // Rename a port to "" to automatically delete the port.
                                     *port_state = String::from("");
@@ -349,17 +339,17 @@ impl DemoApp {
                     }
 
                     if ui.button("Add Port").clicked() {
-                        device_state.system_ports.push(available_ports[0].clone());
+                        bus_state.system_ports.push(available_ports[0].clone());
                     }
 
                     ui.separator();
                 }
 
-                if ui.button("Add Input Device").clicked() {
-                    if let Some(new_device) = config_helper
-                        .new_user_audio_in_device(config_state.user_audio_in_devices.len() + 1)
+                if ui.button("Add Input Bus").clicked() {
+                    if let Some(new_bus) =
+                        config_helper.new_audio_in_bus(config_state.audio_in_busses.len() + 1)
                     {
-                        config_state.user_audio_in_devices.push(new_device);
+                        config_state.audio_in_busses.push(new_bus);
                     }
                 }
 
@@ -376,7 +366,7 @@ impl DemoApp {
         } = self;
 
         ui.horizontal(|ui| {
-            ui.heading("Midi Device");
+            ui.heading("Midi Devices");
 
             if ui.button("Refresh").clicked() {
                 config_helper.refresh_midi_servers(config_state);
@@ -411,42 +401,43 @@ impl DemoApp {
 
             ui.add_space(SPACING);
 
-            // User Audio Inputs
+            // User MIDI Input Controllers
 
-            ui.heading("Inputs");
+            ui.heading("Input Controllers");
 
             ui.separator();
 
-            if let Some((device_configs, available_ports)) =
-                config_helper.user_midi_in_device_config()
+            if let Some((controller_configs, available_ports)) =
+                config_helper.midi_in_controller_config()
             {
-                for (device_i, (device, device_state)) in device_configs
+                for (controller_i, (controller, controller_state)) in controller_configs
                     .iter()
-                    .zip(config_state.user_midi_in_devices.iter_mut())
+                    .zip(config_state.midi_in_controllers.iter_mut())
                     .enumerate()
                 {
                     ui.horizontal(|ui| {
                         ui.add(
-                            egui::TextEdit::singleline(&mut device_state.id).hint_text(&device.id),
+                            egui::TextEdit::singleline(&mut controller_state.id)
+                                .hint_text(&controller.id),
                         );
                         ui.label("Name");
 
-                        if ui.button("Remove Device").clicked() {
-                            // Mark the device for deletion.
-                            device_state.do_delete = true;
+                        if ui.button("Remove").clicked() {
+                            // Mark the controller for deletion.
+                            controller_state.do_delete = true;
                         }
                     });
 
                     ui.horizontal(|ui| {
                         // egui requires a unique id for each combo box
-                        let cb_id = format!("user_midi_in_device_{}", device_i);
+                        let cb_id = format!("user_midi_in_controller_{}", controller_i);
 
                         egui::ComboBox::from_id_source(cb_id)
-                            .selected_text(&device.system_port)
+                            .selected_text(&controller.system_port)
                             .show_ui(ui, |ui| {
                                 for option in available_ports.iter() {
                                     ui.selectable_value(
-                                        &mut device_state.system_port,
+                                        &mut controller_state.system_port,
                                         option.clone(),
                                         option,
                                     );
@@ -459,11 +450,11 @@ impl DemoApp {
                     ui.separator();
                 }
 
-                if ui.button("Add Input Device").clicked() {
-                    if let Some(new_device) = config_helper
-                        .new_user_midi_in_device(config_state.user_midi_in_devices.len() + 1)
+                if ui.button("Add Input Controller").clicked() {
+                    if let Some(new_controller) = config_helper
+                        .new_midi_in_controller(config_state.midi_in_controllers.len() + 1)
                     {
-                        config_state.user_midi_in_devices.push(new_device);
+                        config_state.midi_in_controllers.push(new_controller);
                     }
                 }
 
@@ -482,36 +473,37 @@ impl DemoApp {
 
             ui.separator();
 
-            if let Some((device_configs, available_ports)) =
-                config_helper.user_midi_out_device_config()
+            if let Some((controller_configs, available_ports)) =
+                config_helper.midi_out_controller_config()
             {
-                for (device_i, (device, device_state)) in device_configs
+                for (controller_i, (controller, controller_state)) in controller_configs
                     .iter()
-                    .zip(config_state.user_midi_out_devices.iter_mut())
+                    .zip(config_state.midi_out_controllers.iter_mut())
                     .enumerate()
                 {
                     ui.horizontal(|ui| {
                         ui.add(
-                            egui::TextEdit::singleline(&mut device_state.id).hint_text(&device.id),
+                            egui::TextEdit::singleline(&mut controller_state.id)
+                                .hint_text(&controller.id),
                         );
                         ui.label("Name");
 
-                        if ui.button("Remove Device").clicked() {
-                            // Mark the device for deletion.
-                            device_state.do_delete = true;
+                        if ui.button("Remove").clicked() {
+                            // Mark the controller for deletion.
+                            controller_state.do_delete = true;
                         }
                     });
 
                     ui.horizontal(|ui| {
                         // egui requires a unique id for each combo box
-                        let cb_id = format!("user_midi_out_device_{}", device_i);
+                        let cb_id = format!("user_midi_out_controller_{}", controller_i);
 
                         egui::ComboBox::from_id_source(cb_id)
-                            .selected_text(&device.system_port)
+                            .selected_text(&controller.system_port)
                             .show_ui(ui, |ui| {
                                 for option in available_ports.iter() {
                                     ui.selectable_value(
-                                        &mut device_state.system_port,
+                                        &mut controller_state.system_port,
                                         option.clone(),
                                         option,
                                     );
@@ -524,11 +516,11 @@ impl DemoApp {
                     ui.separator();
                 }
 
-                if ui.button("Add Output Device").clicked() {
-                    if let Some(new_device) = config_helper
-                        .new_user_midi_out_device(config_state.user_midi_out_devices.len() + 1)
+                if ui.button("Add Output Controller").clicked() {
+                    if let Some(new_controller) = config_helper
+                        .new_midi_out_controller(config_state.midi_out_controllers.len() + 1)
                     {
-                        config_state.user_midi_out_devices.push(new_device);
+                        config_state.midi_out_controllers.push(new_controller);
                     }
                 }
 

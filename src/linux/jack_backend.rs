@@ -1,10 +1,10 @@
 use log::{debug, info, warn};
 
 use crate::{
-    AudioDeviceBuffer, AudioServerConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo,
-    DeviceIndex, InternalAudioDevice, InternalMidiDevice, MidiDeviceBuffer, MidiDeviceConfig,
-    MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError,
-    StreamInfo, SystemDeviceInfo,
+    AudioBus, AudioBusBuffer, AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo,
+    DeviceIndex, MidiController, MidiControllerBuffer, MidiControllerConfig, MidiDeviceInfo,
+    MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    SystemDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
@@ -98,9 +98,9 @@ where
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E>(
-    audio_config: &AudioServerConfig,
-    create_midi_in_devices: &[MidiDeviceConfig],
-    create_midi_out_devices: &[MidiDeviceConfig],
+    audio_config: &AudioConfig,
+    create_midi_in_controllers: &[MidiControllerConfig],
+    create_midi_out_controllers: &[MidiControllerConfig],
     mut rt_process_handler: P,
     error_callback: E,
     use_client_name: Option<String>,
@@ -134,32 +134,30 @@ where
     let mut audio_in_ports = Vec::<jack::Port<jack::AudioIn>>::new();
     let mut audio_in_port_names = Vec::<String>::new();
     let mut audio_in_connected_port_names = Vec::<String>::new();
-    let mut audio_in_devices = Vec::<InternalAudioDevice>::new();
-    for (device_index, user_device) in audio_config.create_in_devices.iter().enumerate() {
-        if user_device.system_ports.len() == 0 {
-            return Err(SpawnRtThreadError::NoSystemPortsGiven(
-                user_device.id.clone(),
-            ));
+    let mut audio_in_busses = Vec::<AudioBus>::new();
+    for (bus_i, bus) in audio_config.in_busses.iter().enumerate() {
+        if bus.system_ports.len() == 0 {
+            return Err(SpawnRtThreadError::NoSystemPortsGiven(bus.id.clone()));
         }
 
-        audio_in_devices.push(InternalAudioDevice {
-            id_name: user_device.id.clone(),
-            id_index: DeviceIndex::new(device_index),
-            system_duplex_device: String::from("Jack"),
+        audio_in_busses.push(AudioBus {
+            id_name: bus.id.clone(),
+            id_index: DeviceIndex::new(bus_i),
+            system_device: String::from("Jack"),
             system_half_duplex_device: None,
-            system_ports: user_device.system_ports.clone(),
-            channels: user_device.system_ports.len() as u16,
+            system_ports: bus.system_ports.clone(),
+            channels: bus.system_ports.len() as u16,
         });
 
-        for (i, system_port) in user_device.system_ports.iter().enumerate() {
+        for (i, system_port) in bus.system_ports.iter().enumerate() {
             if !system_audio_in_ports.contains(&system_port) {
                 return Err(SpawnRtThreadError::SystemPortNotFound(
                     system_port.clone(),
-                    user_device.id.clone(),
+                    bus.id.clone(),
                 ));
             }
 
-            let user_port_name = format!("{}_{}", &user_device.id, i + 1);
+            let user_port_name = format!("{}_{}", &bus.id, i + 1);
             let user_port = client.register_port(&user_port_name, jack::AudioIn::default())?;
 
             audio_in_port_names.push(user_port.name()?);
@@ -171,32 +169,30 @@ where
     let mut audio_out_ports = Vec::<jack::Port<jack::AudioOut>>::new();
     let mut audio_out_port_names = Vec::<String>::new();
     let mut audio_out_connected_port_names = Vec::<String>::new();
-    let mut audio_out_devices = Vec::<InternalAudioDevice>::new();
-    for (device_index, user_device) in audio_config.create_out_devices.iter().enumerate() {
-        if user_device.system_ports.len() == 0 {
-            return Err(SpawnRtThreadError::NoSystemPortsGiven(
-                user_device.id.clone(),
-            ));
+    let mut audio_out_busses = Vec::<AudioBus>::new();
+    for (bus_i, bus) in audio_config.out_busses.iter().enumerate() {
+        if bus.system_ports.len() == 0 {
+            return Err(SpawnRtThreadError::NoSystemPortsGiven(bus.id.clone()));
         }
 
-        audio_out_devices.push(InternalAudioDevice {
-            id_name: user_device.id.clone(),
-            id_index: DeviceIndex::new(device_index),
-            system_duplex_device: String::from("Jack"),
+        audio_out_busses.push(AudioBus {
+            id_name: bus.id.clone(),
+            id_index: DeviceIndex::new(bus_i),
+            system_device: String::from("Jack"),
             system_half_duplex_device: None,
-            system_ports: user_device.system_ports.clone(),
-            channels: user_device.system_ports.len() as u16,
+            system_ports: bus.system_ports.clone(),
+            channels: bus.system_ports.len() as u16,
         });
 
-        for (i, system_port) in user_device.system_ports.iter().enumerate() {
+        for (i, system_port) in bus.system_ports.iter().enumerate() {
             if !system_audio_out_ports.contains(&system_port) {
                 return Err(SpawnRtThreadError::SystemPortNotFound(
                     system_port.clone(),
-                    user_device.id.clone(),
+                    bus.id.clone(),
                 ));
             }
 
-            let user_port_name = format!("{}_{}", &user_device.id, i + 1);
+            let user_port_name = format!("{}_{}", &bus.id, i + 1);
             let user_port = client.register_port(&user_port_name, jack::AudioOut::default())?;
 
             audio_out_port_names.push(user_port.name()?);
@@ -208,17 +204,17 @@ where
     let mut midi_in_ports = Vec::<jack::Port<jack::MidiIn>>::new();
     let mut midi_in_port_names = Vec::<String>::new();
     let mut midi_in_connected_port_names = Vec::<String>::new();
-    let mut midi_in_devices = Vec::<InternalMidiDevice>::new();
-    for (device_index, midi_device) in create_midi_in_devices.iter().enumerate() {
-        let system_port_name = &midi_device.system_port;
+    let mut midi_in_controllers = Vec::<MidiController>::new();
+    for (controller_i, controller) in create_midi_in_controllers.iter().enumerate() {
+        let system_port_name = &controller.system_port;
 
-        midi_in_devices.push(InternalMidiDevice {
-            id_name: midi_device.id.clone(),
-            id_index: DeviceIndex::new(device_index),
+        midi_in_controllers.push(MidiController {
+            id_name: controller.id.clone(),
+            id_index: DeviceIndex::new(controller_i),
             system_port: String::from(system_port_name),
         });
 
-        let port = client.register_port(&midi_device.id, jack::MidiIn::default())?;
+        let port = client.register_port(&controller.id, jack::MidiIn::default())?;
 
         midi_in_port_names.push(port.name()?);
         midi_in_connected_port_names.push(String::from(system_port_name));
@@ -228,17 +224,17 @@ where
     let mut midi_out_ports = Vec::<jack::Port<jack::MidiOut>>::new();
     let mut midi_out_port_names = Vec::<String>::new();
     let mut midi_out_connected_port_names = Vec::<String>::new();
-    let mut midi_out_devices = Vec::<InternalMidiDevice>::new();
-    for (device_index, midi_device) in create_midi_out_devices.iter().enumerate() {
-        let system_port_name = &midi_device.system_port;
+    let mut midi_out_controllers = Vec::<MidiController>::new();
+    for (controller_i, controller) in create_midi_out_controllers.iter().enumerate() {
+        let system_port_name = &controller.system_port;
 
-        midi_out_devices.push(InternalMidiDevice {
-            id_name: midi_device.id.clone(),
-            id_index: DeviceIndex::new(device_index),
+        midi_out_controllers.push(MidiController {
+            id_name: controller.id.clone(),
+            id_index: DeviceIndex::new(controller_i),
             system_port: String::from(system_port_name),
         });
 
-        let port = client.register_port(&midi_device.id, jack::MidiOut::default())?;
+        let port = client.register_port(&controller.id, jack::MidiOut::default())?;
 
         midi_out_port_names.push(port.name()?);
         midi_out_connected_port_names.push(String::from(system_port_name));
@@ -250,10 +246,10 @@ where
 
     let stream_info = StreamInfo {
         server_name: String::from("Jack"),
-        audio_in: audio_in_devices,
-        audio_out: audio_out_devices,
-        midi_in: midi_in_devices,
-        midi_out: midi_out_devices,
+        audio_in: audio_in_busses,
+        audio_out: audio_out_busses,
+        midi_in: midi_in_controllers,
+        midi_out: midi_out_controllers,
         sample_rate: sample_rate as u32,
         audio_buffer_size: BufferSizeInfo::ConstantSize(max_audio_buffer_size),
     };
@@ -332,14 +328,14 @@ struct JackProcessHandler<P: RtProcessHandler> {
     audio_in_ports: Vec<jack::Port<jack::AudioIn>>,
     audio_out_ports: Vec<jack::Port<jack::AudioOut>>,
 
-    audio_in_buffers: Vec<AudioDeviceBuffer>,
-    audio_out_buffers: Vec<AudioDeviceBuffer>,
+    audio_in_buffers: Vec<AudioBusBuffer>,
+    audio_out_buffers: Vec<AudioBusBuffer>,
 
     midi_in_ports: Vec<jack::Port<jack::MidiIn>>,
     midi_out_ports: Vec<jack::Port<jack::MidiOut>>,
 
-    midi_in_buffers: Vec<MidiDeviceBuffer>,
-    midi_out_buffers: Vec<MidiDeviceBuffer>,
+    midi_in_buffers: Vec<MidiControllerBuffer>,
+    midi_out_buffers: Vec<MidiControllerBuffer>,
 
     stream_info: StreamInfo,
     max_audio_buffer_size: usize,
@@ -355,30 +351,24 @@ impl<P: RtProcessHandler> JackProcessHandler<P> {
         stream_info: StreamInfo,
         max_audio_buffer_size: u32,
     ) -> Self {
-        let mut audio_in_buffers = Vec::<AudioDeviceBuffer>::new();
-        let mut audio_out_buffers = Vec::<AudioDeviceBuffer>::new();
+        let mut audio_in_buffers = Vec::<AudioBusBuffer>::new();
+        let mut audio_out_buffers = Vec::<AudioBusBuffer>::new();
 
-        for device in stream_info.audio_in.iter() {
-            audio_in_buffers.push(AudioDeviceBuffer::new(
-                device.channels,
-                max_audio_buffer_size,
-            ))
+        for bus in stream_info.audio_in.iter() {
+            audio_in_buffers.push(AudioBusBuffer::new(bus.channels, max_audio_buffer_size))
         }
-        for device in stream_info.audio_out.iter() {
-            audio_out_buffers.push(AudioDeviceBuffer::new(
-                device.channels,
-                max_audio_buffer_size,
-            ))
+        for bus in stream_info.audio_out.iter() {
+            audio_out_buffers.push(AudioBusBuffer::new(bus.channels, max_audio_buffer_size))
         }
 
-        let mut midi_in_buffers = Vec::<MidiDeviceBuffer>::new();
-        let mut midi_out_buffers = Vec::<MidiDeviceBuffer>::new();
+        let mut midi_in_buffers = Vec::<MidiControllerBuffer>::new();
+        let mut midi_out_buffers = Vec::<MidiControllerBuffer>::new();
 
         for _ in 0..stream_info.midi_in.len() {
-            midi_in_buffers.push(MidiDeviceBuffer::new())
+            midi_in_buffers.push(MidiControllerBuffer::new())
         }
         for _ in 0..stream_info.midi_out.len() {
-            midi_out_buffers.push(MidiDeviceBuffer::new())
+            midi_out_buffers.push(MidiControllerBuffer::new())
         }
 
         Self {
@@ -475,6 +465,8 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
 
             sample_rate: self.stream_info.sample_rate,
         });
+
+        // TODO: Properly mix outputs in the case where a system port is connected to more than one bus/controller.
 
         // Copy processed data to Audio Outputs
 
