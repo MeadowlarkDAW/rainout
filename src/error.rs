@@ -1,11 +1,11 @@
 #[derive(Debug)]
 pub enum SpawnRtThreadError {
     AudioServerUnavailable(String),
-    SystemDuplexDeviceNotFound(String),
+    SystemDeviceNotFound(String),
     SystemHalfDuplexDeviceNotFound(String),
     SystemPortNotFound(String, String),
     NoSystemPortsGiven(String),
-    DeviceIdNotUnique(String),
+    IdNotUnique(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
 }
 
@@ -21,10 +21,10 @@ impl std::fmt::Display for SpawnRtThreadError {
                     server
                 )
             }
-            SpawnRtThreadError::SystemDuplexDeviceNotFound(device) => {
+            SpawnRtThreadError::SystemDeviceNotFound(device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system duplex audio device {} could not be found",
+                    "Error spawning rt thread: The system audio device {} could not be found",
                     device
                 )
             }
@@ -38,7 +38,7 @@ impl std::fmt::Display for SpawnRtThreadError {
             SpawnRtThreadError::SystemPortNotFound(port, device) => {
                 write!(
                     f,
-                    "Error spawning rt thread: The system port {} could not be found. This port was requested for the device with id {}",
+                    "Error spawning rt thread: The system port {} could not be found. This port was requested for bus/controller with id {}",
                     port,
                     device,
                 )
@@ -46,14 +46,14 @@ impl std::fmt::Display for SpawnRtThreadError {
             SpawnRtThreadError::NoSystemPortsGiven(id) => {
                 write!(
                     f,
-                    "Error spawning rt thread: No system ports were set for the device with id {}",
+                    "Error spawning rt thread: No system ports were set for the bus with id {}",
                     id,
                 )
             }
-            SpawnRtThreadError::DeviceIdNotUnique(id) => {
+            SpawnRtThreadError::IdNotUnique(id) => {
                 write!(
                     f,
-                    "Error spawning rt thread: Two or more devices have the same id {}",
+                    "Error spawning rt thread: Two or more busses/controllers have the same id {}",
                     id,
                 )
             }

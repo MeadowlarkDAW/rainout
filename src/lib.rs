@@ -172,28 +172,24 @@ fn check_duplicate_ids(
 
     for in_bus in audio_config.in_busses.iter() {
         if !ids.insert(in_bus.id.clone()) {
-            return Err(SpawnRtThreadError::DeviceIdNotUnique(in_bus.id.clone()));
+            return Err(SpawnRtThreadError::IdNotUnique(in_bus.id.clone()));
         }
     }
     for out_bus in audio_config.out_busses.iter() {
         if !ids.insert(out_bus.id.clone()) {
-            return Err(SpawnRtThreadError::DeviceIdNotUnique(out_bus.id.clone()));
+            return Err(SpawnRtThreadError::IdNotUnique(out_bus.id.clone()));
         }
     }
 
     if let Some(midi_config) = midi_config {
         for in_controller in midi_config.in_controllers.iter() {
             if !ids.insert(in_controller.id.clone()) {
-                return Err(SpawnRtThreadError::DeviceIdNotUnique(
-                    in_controller.id.clone(),
-                ));
+                return Err(SpawnRtThreadError::IdNotUnique(in_controller.id.clone()));
             }
         }
         for out_controller in midi_config.out_controllers.iter() {
             if !ids.insert(out_controller.id.clone()) {
-                return Err(SpawnRtThreadError::DeviceIdNotUnique(
-                    out_controller.id.clone(),
-                ));
+                return Err(SpawnRtThreadError::IdNotUnique(out_controller.id.clone()));
             }
         }
     }
