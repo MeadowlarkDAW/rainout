@@ -406,7 +406,7 @@ impl DeviceIOConfigHelper {
                     }
                 }
 
-                // Make sure there is always at-least one output.
+                // Make sure there is always at-least one output bus.
                 if state.audio_out_busses.is_empty() {
                     let (_, audio_out_busses) = self.default_audio_busses();
                     self.audio_out_busses = audio_out_busses;
@@ -567,7 +567,7 @@ impl DeviceIOConfigHelper {
                 })
             } else {
                 Some(AudioBusConfigState {
-                    id: format!("Stereo Speaker #{}", index),
+                    id: format!("Stereo Speakers #{}", index),
                     system_ports: vec![device.out_ports[0].clone(), device.out_ports[1].clone()],
                     do_delete: false,
                 })
@@ -602,24 +602,30 @@ impl DeviceIOConfigHelper {
     }
 
     fn default_audio_busses(&self) -> (Vec<AudioBusConfigState>, Vec<AudioBusConfigState>) {
-        let in_devices = Vec::<AudioBusConfigState>::new();
+        let mut in_devices = Vec::<AudioBusConfigState>::new();
         let mut out_devices = Vec::<AudioBusConfigState>::new();
 
         if let Some(device) = self.current_audio_device_info() {
-            // Only create a single stereo/mono output for now.
+            if device.in_ports.len() > 0 {
+                in_devices.push(AudioBusConfigState {
+                    id: String::from("Mic #1"),
+                    system_ports: vec![device.in_ports[0].clone()],
+                    do_delete: false,
+                })
+            }
 
             if device.out_ports.len() == 1 {
                 out_devices.push(AudioBusConfigState {
                     id: String::from("Mono Speaker"),
                     system_ports: vec![device.out_ports[0].clone()],
                     do_delete: false,
-                })
+                });
             } else {
                 out_devices.push(AudioBusConfigState {
-                    id: String::from("Stereo Speaker"),
+                    id: String::from("Stereo Speakers"),
                     system_ports: vec![device.out_ports[0].clone(), device.out_ports[1].clone()],
                     do_delete: false,
-                })
+                });
             }
         }
 

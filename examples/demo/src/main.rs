@@ -469,7 +469,7 @@ impl DemoApp {
 
             // User Audio Outputs
 
-            ui.heading("Outputs");
+            ui.heading("Output Controllers");
 
             ui.separator();
 
