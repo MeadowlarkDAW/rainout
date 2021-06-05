@@ -278,9 +278,9 @@ impl DemoApp {
                 }
 
                 if ui.button("Add Output Device").clicked() {
-                    if let Some(new_device) = config_helper.default_user_audio_out_device(
-                        config_state.user_audio_out_devices.len() + 1,
-                    ) {
+                    if let Some(new_device) = config_helper
+                        .new_user_audio_out_device(config_state.user_audio_out_devices.len() + 1)
+                    {
                         config_state.user_audio_out_devices.push(new_device);
                     }
                 }
@@ -357,7 +357,7 @@ impl DemoApp {
 
                 if ui.button("Add Input Device").clicked() {
                     if let Some(new_device) = config_helper
-                        .default_user_audio_in_device(config_state.user_audio_in_devices.len() + 1)
+                        .new_user_audio_in_device(config_state.user_audio_in_devices.len() + 1)
                     {
                         config_state.user_audio_in_devices.push(new_device);
                     }
@@ -379,7 +379,99 @@ impl DemoApp {
             ui.heading("Midi Device");
 
             if ui.button("Refresh").clicked() {
-                //config_helper.refresh_audio_servers(config_state);
+                config_helper.refresh_audio_servers(config_state);
+            }
+        });
+
+        ui.separator();
+
+        ui.vertical(|ui| {
+            // Midi server (driver model)
+
+            let midi_server_options = config_helper.midi_server_options();
+            egui::ComboBox::from_label("Driver Model")
+                .selected_text(&midi_server_options.options[midi_server_options.selected])
+                .show_ui(ui, |ui| {
+                    for (i, option) in midi_server_options.options.iter().enumerate() {
+                        ui.selectable_value(&mut config_state.midi_server, i, option);
+                    }
+                });
+
+            ui.separator();
+
+            // Error States
+
+            if config_helper.midi_server_unavailable() {
+                ui.label(format!(
+                    "{} midi server is unavailable",
+                    config_helper.midi_server_options().options
+                        [config_helper.midi_server_options().selected]
+                ));
+            }
+
+            ui.add_space(SPACING);
+
+            // User Audio Inputs
+
+            ui.heading("Inputs");
+
+            ui.separator();
+
+            if let Some((device_configs, available_ports)) =
+                config_helper.user_midi_in_device_config()
+            {
+                for (device_i, (device, device_state)) in device_configs
+                    .iter()
+                    .zip(config_state.user_midi_in_devices.iter_mut())
+                    .enumerate()
+                {
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut device_state.id).hint_text(&device.id),
+                        );
+                        ui.label("Name");
+
+                        if ui.button("Remove Device").clicked() {
+                            // Mark the device for deletion.
+                            device_state.do_delete = true;
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        // egui requires a unique id for each combo box
+                        let cb_id = format!("user_midi_in_device_{}", device_i);
+
+                        egui::ComboBox::from_id_source(cb_id)
+                            .selected_text(&device.system_port)
+                            .show_ui(ui, |ui| {
+                                for option in available_ports.iter() {
+                                    ui.selectable_value(
+                                        &mut device_state.system_port,
+                                        option.clone(),
+                                        option,
+                                    );
+                                }
+                            });
+
+                        ui.label("System Port");
+                    });
+
+                    ui.separator();
+                }
+
+                if ui.button("Add Input Device").clicked() {
+                    if let Some(new_device) = config_helper
+                        .new_user_midi_in_device(config_state.user_midi_in_devices.len() + 1)
+                    {
+                        config_state.user_midi_in_devices.push(new_device);
+                    }
+                }
+
+                ui.separator();
+            } else {
+                ui.label("No MIDI input devices were found");
+
+                ui.separator();
             }
         });
     }
