@@ -10,3 +10,4 @@ publish = false
 [dependencies]
 rusty-daw-io = { path = "../../" }
 eframe = "0.12.0"
+simple_logger = "1.11"
