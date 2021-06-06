@@ -44,6 +44,7 @@ pub struct MidiControllerConfigState {
     pub do_delete: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct DeviceIOConfigState {
     pub audio_server: usize,
     pub audio_server_device: usize,
@@ -678,6 +679,8 @@ impl DeviceIOConfigHelper {
     }
 
     pub fn refresh_audio_servers(&mut self, state: &mut DeviceIOConfigState) {
+        let mut prev_state = state.clone();
+
         self.os_info.refresh_audio_servers();
 
         self.audio_server_options.options = self
@@ -689,11 +692,17 @@ impl DeviceIOConfigHelper {
 
         // Force update on all available audio options.
         self.audio_server_options.selected = state.audio_server + 1;
-
         self.update(state);
+
+        // Try to keep settings of previous state.
+        self.update(&mut prev_state);
+
+        *state = prev_state;
     }
 
     pub fn refresh_midi_servers(&mut self, state: &mut DeviceIOConfigState) {
+        let mut prev_state = state.clone();
+
         self.os_info.refresh_midi_servers();
 
         self.midi_server_options.options = self
@@ -705,8 +714,11 @@ impl DeviceIOConfigHelper {
 
         // Force update on all available midi options.
         self.midi_server_options.selected = state.midi_server + 1;
-
         self.update(state);
+
+        // Try to keep settings of previous state.
+        self.update(&mut prev_state);
+        *state = prev_state;
     }
 
     pub fn audio_server_config(&self) -> &Option<AudioConfig> {
