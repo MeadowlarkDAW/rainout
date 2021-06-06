@@ -139,6 +139,11 @@ pub struct DeviceIOConfigHelper {
 
     midi_in_port_options: Vec<String>,
     midi_out_port_options: Vec<String>,
+
+    created_audio_in_busses: usize,
+    created_audio_out_busses: usize,
+    created_midi_in_controllers: usize,
+    created_midi_out_controllers: usize,
 }
 
 impl DeviceIOConfigHelper {
@@ -167,6 +172,11 @@ impl DeviceIOConfigHelper {
 
             midi_in_port_options: Vec::new(),
             midi_out_port_options: Vec::new(),
+
+            created_audio_in_busses: 1,
+            created_audio_out_busses: 1,
+            created_midi_in_controllers: 1,
+            created_midi_out_controllers: 0,
         };
 
         new_self.audio_server_options.options = new_self
@@ -540,66 +550,171 @@ impl DeviceIOConfigHelper {
         audio_changed || midi_changed
     }
 
-    pub fn new_audio_in_bus(&self, index: usize) -> Option<AudioBusConfigState> {
-        if let Some(device) = self.current_audio_device_info() {
+    pub fn new_audio_in_bus(&mut self) -> Option<AudioBusConfigState> {
+        let new_bus = if let Some(device) = self.current_audio_device_info() {
             if device.in_ports.len() == 0 {
                 None
             } else {
+                // Find the index of the next available port.
+                let mut next_port_i = 1;
+                if let Some(last_bus) = self.audio_in_busses.last() {
+                    if let Some(last_port) = last_bus.system_ports.last() {
+                        for port in device.in_ports.iter() {
+                            if port == last_port {
+                                break;
+                            }
+                            next_port_i += 1;
+                        }
+                    }
+                }
+                if next_port_i >= device.in_ports.len() {
+                    next_port_i = 0;
+                }
+
                 Some(AudioBusConfigState {
-                    id: format!("Mic #{}", index),
-                    system_ports: vec![device.in_ports[0].clone()],
+                    id: format!("Mic #{}", self.created_audio_in_busses + 1),
+                    system_ports: vec![device.in_ports[next_port_i].clone()],
                     do_delete: false,
                 })
             }
         } else {
             None
+        };
+
+        if new_bus.is_some() {
+            self.created_audio_in_busses += 1;
         }
+
+        new_bus
     }
 
-    pub fn new_audio_out_bus(&self, index: usize) -> Option<AudioBusConfigState> {
-        if let Some(device) = self.current_audio_device_info() {
+    pub fn new_audio_out_bus(&mut self) -> Option<AudioBusConfigState> {
+        let next_port = |device: &SystemDeviceInfo| {
+            // Find the index of the next available port.
+            let mut next_port_i = 1;
+            if let Some(last_bus) = self.audio_out_busses.last() {
+                if let Some(last_port) = last_bus.system_ports.last() {
+                    for port in device.out_ports.iter() {
+                        if port == last_port {
+                            break;
+                        }
+                        next_port_i += 1;
+                    }
+                }
+            }
+            if next_port_i >= device.out_ports.len() {
+                next_port_i = 0;
+            }
+            next_port_i
+        };
+
+        let new_bus = if let Some(device) = self.current_audio_device_info() {
             if device.out_ports.len() == 0 {
                 None
             } else if device.out_ports.len() == 1 {
+                let next_port_i = next_port(device);
+
                 Some(AudioBusConfigState {
-                    id: format!("Mono Speaker #{}", index),
-                    system_ports: vec![device.out_ports[0].clone()],
+                    id: format!("Mono Speaker #{}", self.created_audio_out_busses + 1),
+                    system_ports: vec![device.out_ports[next_port_i].clone()],
                     do_delete: false,
                 })
             } else {
+                let next_port_i = next_port(device);
+                let second_port_i = if next_port_i + 1 >= device.out_ports.len() {
+                    0
+                } else {
+                    next_port_i + 1
+                };
+
                 Some(AudioBusConfigState {
-                    id: format!("Stereo Speakers #{}", index),
-                    system_ports: vec![device.out_ports[0].clone(), device.out_ports[1].clone()],
+                    id: format!("Stereo Speakers #{}", self.created_audio_out_busses + 1),
+                    system_ports: vec![
+                        device.out_ports[next_port_i].clone(),
+                        device.out_ports[second_port_i].clone(),
+                    ],
                     do_delete: false,
                 })
             }
         } else {
             None
+        };
+
+        if new_bus.is_some() {
+            self.created_audio_out_busses += 1;
         }
+
+        new_bus
     }
 
-    pub fn new_midi_in_controller(&self, index: usize) -> Option<MidiControllerConfigState> {
-        if let Some(device) = self.midi_in_port_options.first() {
+    pub fn new_midi_in_controller(&mut self) -> Option<MidiControllerConfigState> {
+        let new_controller = if !self.midi_in_port_options.is_empty() {
+            // Find the index of the next available port.
+            let mut next_port_i = 1;
+            if let Some(last_controller) = self.midi_in_controllers.last() {
+                for port in self.midi_in_port_options.iter() {
+                    if port == &last_controller.system_port {
+                        break;
+                    }
+                    next_port_i += 1;
+                }
+            }
+            if next_port_i >= self.midi_in_port_options.len() {
+                next_port_i = 0;
+            }
+
             Some(MidiControllerConfigState {
-                id: format!("MIDI In Controller #{}", index),
-                system_port: device.clone(),
+                id: format!(
+                    "MIDI In Controller #{}",
+                    self.created_midi_in_controllers + 1
+                ),
+                system_port: self.midi_in_port_options[next_port_i].clone(),
                 do_delete: false,
             })
         } else {
             None
+        };
+
+        if new_controller.is_some() {
+            self.created_midi_in_controllers += 1;
         }
+
+        new_controller
     }
 
-    pub fn new_midi_out_controller(&self, index: usize) -> Option<MidiControllerConfigState> {
-        if let Some(device) = self.midi_out_port_options.first() {
+    pub fn new_midi_out_controller(&mut self) -> Option<MidiControllerConfigState> {
+        let new_controller = if !self.midi_out_port_options.is_empty() {
+            // Find the index of the next available port.
+            let mut next_port_i = 1;
+            if let Some(last_controller) = self.midi_out_controllers.last() {
+                for port in self.midi_out_port_options.iter() {
+                    if port == &last_controller.system_port {
+                        break;
+                    }
+                    next_port_i += 1;
+                }
+            }
+            if next_port_i >= self.midi_out_port_options.len() {
+                next_port_i = 0;
+            }
+
             Some(MidiControllerConfigState {
-                id: format!("MIDI Out Controller #{}", index),
-                system_port: device.clone(),
+                id: format!(
+                    "MIDI Out Controller #{}",
+                    self.created_midi_out_controllers + 1,
+                ),
+                system_port: self.midi_out_port_options[next_port_i].clone(),
                 do_delete: false,
             })
         } else {
             None
+        };
+
+        if new_controller.is_some() {
+            self.created_midi_out_controllers += 1;
         }
+
+        new_controller
     }
 
     fn default_audio_busses(&self) -> (Vec<AudioBusConfigState>, Vec<AudioBusConfigState>) {

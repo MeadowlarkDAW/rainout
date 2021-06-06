@@ -272,9 +272,7 @@ impl DemoApp {
                 }
 
                 if ui.button("Add Output Bus").clicked() {
-                    if let Some(new_bus) =
-                        config_helper.new_audio_out_bus(config_state.audio_out_busses.len() + 1)
-                    {
+                    if let Some(new_bus) = config_helper.new_audio_out_bus() {
                         config_state.audio_out_busses.push(new_bus);
                     }
                 }
@@ -346,9 +344,7 @@ impl DemoApp {
                 }
 
                 if ui.button("Add Input Bus").clicked() {
-                    if let Some(new_bus) =
-                        config_helper.new_audio_in_bus(config_state.audio_in_busses.len() + 1)
-                    {
+                    if let Some(new_bus) = config_helper.new_audio_in_bus() {
                         config_state.audio_in_busses.push(new_bus);
                     }
                 }
@@ -451,9 +447,7 @@ impl DemoApp {
                 }
 
                 if ui.button("Add Input Controller").clicked() {
-                    if let Some(new_controller) = config_helper
-                        .new_midi_in_controller(config_state.midi_in_controllers.len() + 1)
-                    {
+                    if let Some(new_controller) = config_helper.new_midi_in_controller() {
                         config_state.midi_in_controllers.push(new_controller);
                     }
                 }
@@ -517,9 +511,7 @@ impl DemoApp {
                 }
 
                 if ui.button("Add Output Controller").clicked() {
-                    if let Some(new_controller) = config_helper
-                        .new_midi_out_controller(config_state.midi_out_controllers.len() + 1)
-                    {
+                    if let Some(new_controller) = config_helper.new_midi_out_controller() {
                         config_state.midi_out_controllers.push(new_controller);
                     }
                 }
