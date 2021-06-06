@@ -567,7 +567,7 @@ impl DeviceIOConfigHelper {
                         }
                     }
                 }
-                if next_port_i >= device.in_ports.len() {
+                if next_port_i >= device.in_ports.len() || self.audio_in_busses.is_empty() {
                     next_port_i = 0;
                 }
 
@@ -602,7 +602,7 @@ impl DeviceIOConfigHelper {
                     }
                 }
             }
-            if next_port_i >= device.out_ports.len() {
+            if next_port_i >= device.out_ports.len() || self.audio_out_busses.is_empty() {
                 next_port_i = 0;
             }
             next_port_i
@@ -659,7 +659,8 @@ impl DeviceIOConfigHelper {
                     next_port_i += 1;
                 }
             }
-            if next_port_i >= self.midi_in_port_options.len() {
+            if next_port_i >= self.midi_in_port_options.len() || self.midi_in_controllers.is_empty()
+            {
                 next_port_i = 0;
             }
 
@@ -694,7 +695,9 @@ impl DeviceIOConfigHelper {
                     next_port_i += 1;
                 }
             }
-            if next_port_i >= self.midi_out_port_options.len() {
+            if next_port_i >= self.midi_out_port_options.len()
+                || self.midi_out_controllers.is_empty()
+            {
                 next_port_i = 0;
             }
 
