@@ -61,9 +61,9 @@ pub fn load_audio_config_from_file<P: Into<PathBuf>>(
                     for a in event.attributes() {
                         let a = a?;
                         if a.key == b"id" {
-                            if let Ok(s) = String::from_utf8(a.value.to_vec()) {
-                                id = s;
-                            }
+                            id = String::from_utf8(a.value.to_vec()).map_err(|_| {
+                                ConfigFileError::FailedToParseUTF8(a.value.to_vec())
+                            })?;
                             break;
                         }
                     }
@@ -189,9 +189,9 @@ pub fn load_midi_config_from_file<P: Into<PathBuf>>(
                     for a in event.attributes() {
                         let a = a?;
                         if a.key == b"id" {
-                            if let Ok(s) = String::from_utf8(a.value.to_vec()) {
-                                id = s;
-                            }
+                            id = String::from_utf8(a.value.to_vec()).map_err(|_| {
+                                ConfigFileError::FailedToParseUTF8(a.value.to_vec())
+                            })?;
                             break;
                         }
                     }
@@ -439,6 +439,7 @@ pub enum ConfigFileError {
     Xml(quick_xml::Error),
     File(std::io::Error),
     InvalidConfigFile(usize),
+    FailedToParseUTF8(Vec<u8>),
 }
 
 impl std::error::Error for ConfigFileError {}
@@ -454,6 +455,9 @@ impl std::fmt::Display for ConfigFileError {
             }
             ConfigFileError::InvalidConfigFile(pos) => {
                 write!(f, "Invalid config file. Error detected at position {}", pos)
+            }
+            ConfigFileError::FailedToParseUTF8(bytes) => {
+                write!(f, "Failed to parse UTF-8 string. Bytes: {:?}", bytes)
             }
         }
     }
