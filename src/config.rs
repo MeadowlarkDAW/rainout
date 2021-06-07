@@ -1,6 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AudioBusConfig {
     /// The ID to use for this bus. This ID is for the "internal" bus that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the name of the actual
@@ -20,7 +18,7 @@ pub struct AudioBusConfig {
     pub system_ports: Vec<String>,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct AudioConfig {
     /// The name of the audio server to use.
     pub server: String,
@@ -62,7 +60,7 @@ pub struct AudioConfig {
     pub buffer_size: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MidiControllerConfig {
     /// The ID to use for this controller. This ID is for the "internal" controller that appears to the user
     /// as list of available sources/sends. This is not necessarily the same as the name of the actual
@@ -75,7 +73,7 @@ pub struct MidiControllerConfig {
     pub system_port: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MidiConfig {
     /// The name of the audio server to use.
     pub server: String,

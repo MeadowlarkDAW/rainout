@@ -13,14 +13,18 @@ readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["save-file"]
+save-file = ["quick-xml"]
+
 [workspace]
 members = [
     "examples/demo",
 ]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
+quick-xml = { version = "0.22", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 jack = "0.7"

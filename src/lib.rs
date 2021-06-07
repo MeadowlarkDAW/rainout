@@ -23,6 +23,11 @@ pub use midi_buffer::*;
 pub use stream_info::*;
 pub use system_info::*;
 
+#[cfg(feature = "save-file")]
+pub mod save_file;
+#[cfg(feature = "save-file")]
+pub use save_file::*;
+
 use error::*;
 
 pub trait RtProcessHandler: 'static + Send {
