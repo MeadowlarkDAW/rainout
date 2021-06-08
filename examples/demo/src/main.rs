@@ -42,7 +42,16 @@ impl epi::App for DemoApp {
             status_msg_open,
         } = self;
 
-        let (config_state, config_feedback) = config_feedback.update();
+        let (config_state, config_feedback, messages) = config_feedback.update();
+
+        if let Some(messages) = &messages {
+            status_msg.clear();
+            for message in messages.iter() {
+                status_msg.push_str(message.as_str());
+                status_msg.push_str("\n");
+            }
+            *status_msg_open = true;
+        }
 
         /*
         egui::TopPanel::top("top_panel").show(ctx, |ui| {
@@ -76,7 +85,13 @@ impl epi::App for DemoApp {
                 status_msg,
                 status_msg_open,
             ),
-            SettingsTab::Midi => midi_settings(ui, config_state, config_feedback),
+            SettingsTab::Midi => midi_settings(
+                ui,
+                config_state,
+                config_feedback,
+                status_msg,
+                status_msg_open,
+            ),
         });
 
         if *status_msg_open {
@@ -120,10 +135,10 @@ fn audio_settings(
 
         // Can't figure out how to right-align elements in egui. Use spacing as a hacky
         // way to mimic this.
-        ui.add_space(225.0);
+        ui.add_space(150.0);
 
         if let Some(audio_config) = config_feedback.audio_server_config() {
-            if ui.button("Save Config").clicked() {
+            if ui.button("Save Audio Config").clicked() {
                 // Just using the root directory and a default filename, but you can use the system's
                 // file dialog instead.
                 match write_audio_config_to_file("test_audio_config.xml", audio_config) {
@@ -142,26 +157,24 @@ fn audio_settings(
                 *status_msg_open = true;
             }
         } else {
-            ui.add(egui::Button::new("Save Config").enabled(false));
+            ui.add(egui::Button::new("Save Audio Config").enabled(false));
         }
 
-        if ui.button("Load Config").clicked() {
+        if ui.button("Load Audio Config").clicked() {
             // Just using the root directory and a default filename, but you can use the system's
             // file dialog instead.
             match load_audio_config_from_file("test_audio_config.xml") {
                 Ok(new_config) => {
-                    *status_msg =
-                        String::from("Successfully loaded config from \"test_audio_config.xml\"");
-                    println!("{}", status_msg);
+                    config_state.do_load_audio_config = Some(new_config);
                 }
                 Err(e) => {
                     *status_msg = format!("Error loading config: {}", e);
                     eprintln!("{}", status_msg);
+
+                    // Show the status message to the user as a pop-up window.
+                    *status_msg_open = true;
                 }
             }
-
-            // Show the status message to the user as a pop-up window.
-            *status_msg_open = true;
         }
     });
 
@@ -177,10 +190,10 @@ fn audio_settings(
         ui.separator();
 
         egui::ComboBox::from_label("Driver Model")
-            .selected_text(&config_feedback.audio_server_options()[config_state.audio_server])
+            .selected_text(&config_feedback.audio_server_options()[config_state.audio_server_index])
             .show_ui(ui, |ui| {
                 for (i, option) in config_feedback.audio_server_options().iter().enumerate() {
-                    ui.selectable_value(&mut config_state.audio_server, i, option);
+                    ui.selectable_value(&mut config_state.audio_server_index, i, option);
                 }
             });
 
@@ -188,16 +201,16 @@ fn audio_settings(
 
         // Audio device
 
-        if let Some(audio_device_options) = config_feedback.audio_server_device_options() {
+        if let Some(audio_device_options) = config_feedback.audio_device_options() {
             egui::ComboBox::from_label("Device")
-                .selected_text(&audio_device_options[config_state.audio_server_device])
+                .selected_text(&audio_device_options[config_state.audio_device_index])
                 .show_ui(ui, |ui| {
                     for (i, option) in audio_device_options.iter().enumerate() {
-                        ui.selectable_value(&mut config_state.audio_server_device, i, option);
+                        ui.selectable_value(&mut config_state.audio_device_index, i, option);
                     }
                 });
 
-            if config_feedback.audio_server_device_playback_only() {
+            if config_feedback.audio_device_playback_only() {
                 ui.label("(Playback only)");
             }
         }
@@ -260,14 +273,14 @@ fn audio_settings(
 
         // Error States
 
-        if config_feedback.audio_server_device_not_selected() {
+        if config_feedback.audio_device_not_selected() {
             ui.label("Cannot start audio engine. No device is selected.");
         }
 
         if config_feedback.audio_server_unavailable() {
             ui.label(format!(
                 "Cannot start audio engine. {} audio server is unavailable",
-                config_feedback.audio_server_options()[config_state.audio_server]
+                config_feedback.audio_server_options()[config_state.audio_server_index]
             ));
         }
 
@@ -412,12 +425,60 @@ fn midi_settings(
     ui: &mut egui::Ui,
     config_state: &mut DeviceIOHelperState,
     config_feedback: &DeviceIOHelperFeedback,
+    status_msg: &mut String,
+    status_msg_open: &mut bool,
 ) {
     ui.horizontal(|ui| {
+        use rusty_daw_io::save_file::{load_midi_config_from_file, write_midi_config_to_file};
+
         ui.heading("Midi Devices");
 
         if ui.button("Refresh").clicked() {
             config_state.do_refresh_midi_servers = true;
+        }
+
+        // Can't figure out how to right-align elements in egui. Use spacing as a hacky
+        // way to mimic this.
+        ui.add_space(180.0);
+
+        if let Some(midi_config) = config_feedback.midi_server_config() {
+            if ui.button("Save Midi Config").clicked() {
+                // Just using the root directory and a default filename, but you can use the system's
+                // file dialog instead.
+                match write_midi_config_to_file("test_midi_config.xml", midi_config) {
+                    Ok(()) => {
+                        *status_msg =
+                            String::from("Successfully saved config to \"test_midi_config.xml\"");
+                        println!("{}", status_msg);
+                    }
+                    Err(e) => {
+                        *status_msg = format!("Error saving config: {}", e);
+                        eprintln!("{}", status_msg);
+                    }
+                }
+
+                // Show the status message to the user as a pop-up window.
+                *status_msg_open = true;
+            }
+        } else {
+            ui.add(egui::Button::new("Save Midi Config").enabled(false));
+        }
+
+        if ui.button("Load Midi Config").clicked() {
+            // Just using the root directory and a default filename, but you can use the system's
+            // file dialog instead.
+            match load_midi_config_from_file("test_midi_config.xml") {
+                Ok(new_config) => {
+                    config_state.do_load_midi_config = Some(new_config);
+                }
+                Err(e) => {
+                    *status_msg = format!("Error loading config: {}", e);
+                    eprintln!("{}", status_msg);
+
+                    // Show the status message to the user as a pop-up window.
+                    *status_msg_open = true;
+                }
+            }
         }
     });
 
@@ -427,10 +488,10 @@ fn midi_settings(
         // Midi server (driver model)
 
         egui::ComboBox::from_label("Driver Model")
-            .selected_text(&config_feedback.midi_server_options()[config_state.midi_server])
+            .selected_text(&config_feedback.midi_server_options()[config_state.midi_server_index])
             .show_ui(ui, |ui| {
                 for (i, option) in config_feedback.midi_server_options().iter().enumerate() {
-                    ui.selectable_value(&mut config_state.midi_server, i, option);
+                    ui.selectable_value(&mut config_state.midi_server_index, i, option);
                 }
             });
 
@@ -441,7 +502,7 @@ fn midi_settings(
         if config_feedback.midi_server_unavailable() {
             ui.label(format!(
                 "{} midi server is unavailable",
-                config_feedback.midi_server_options()[config_state.midi_server]
+                config_feedback.midi_server_options()[config_state.midi_server_index]
             ));
         }
 
