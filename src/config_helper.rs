@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use crate::{
     AudioBusConfig, AudioConfig, AudioServerDevices, BufferSizeInfo, DevicesInfo, MidiConfig,
     MidiControllerConfig, SystemDeviceInfo,
@@ -45,7 +47,7 @@ pub struct MidiControllerConfigState {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeviceIOConfigState {
+pub struct DeviceIOHelperState {
     pub audio_server: usize,
     pub audio_server_device: usize,
 
@@ -59,9 +61,12 @@ pub struct DeviceIOConfigState {
 
     pub midi_in_controllers: Vec<MidiControllerConfigState>,
     pub midi_out_controllers: Vec<MidiControllerConfigState>,
+
+    pub do_refresh_audio_servers: bool,
+    pub do_refresh_midi_servers: bool,
 }
 
-impl Default for DeviceIOConfigState {
+impl Default for DeviceIOHelperState {
     fn default() -> Self {
         Self {
             audio_server: 0,
@@ -77,35 +82,17 @@ impl Default for DeviceIOConfigState {
 
             midi_in_controllers: Vec::new(),
             midi_out_controllers: Vec::new(),
+
+            do_refresh_audio_servers: false,
+            do_refresh_midi_servers: false,
         }
     }
 }
 
-pub struct RadioSelection {
-    pub selected: usize,
-    pub options: Vec<String>,
-}
-
-impl RadioSelection {
-    pub(crate) fn new() -> Self {
-        Self {
-            selected: 0,
-            options: Vec::new(),
-        }
-    }
-}
-
-pub enum BufferSizeSelection {
+pub enum BufferSizeOptions {
     UnknownSize,
-    Constant {
-        auto_value: u32,
-    },
-    Range {
-        selected: u32,
-        auto_value: u32,
-        min: u32,
-        max: u32,
-    },
+    Constant { auto_value: u32 },
+    Range { auto_value: u32, min: u32, max: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,46 +102,118 @@ pub struct AudioConfigInfo {
     pub sample_rate: u32,
 }
 
-pub struct DeviceIOConfigHelper {
+pub struct DeviceIOHelper {
+    state: DeviceIOHelperState,
+    feedback: DeviceIOHelperFeedback,
+}
+
+impl DeviceIOHelper {
+    pub fn new() -> Self {
+        let (feedback, state) = DeviceIOHelperFeedback::new();
+
+        DeviceIOHelper { state, feedback }
+    }
+
+    pub fn update(&mut self) -> (&mut DeviceIOHelperState, &DeviceIOHelperFeedback) {
+        if self.state.do_refresh_audio_servers || self.state.do_refresh_midi_servers {
+            let mut prev_state = self.state.clone();
+
+            if self.state.do_refresh_audio_servers {
+                self.feedback.os_info.refresh_audio_servers();
+
+                self.feedback.audio_server_options = self
+                    .feedback
+                    .os_info
+                    .audio_servers_info()
+                    .iter()
+                    .map(|s| s.name.clone())
+                    .collect();
+
+                // Force update on all available audio options.
+                self.state.audio_server = self.state.audio_server + 1;
+            }
+
+            if self.state.do_refresh_midi_servers {
+                self.feedback.os_info.refresh_midi_servers();
+
+                self.feedback.midi_server_options = self
+                    .feedback
+                    .os_info
+                    .midi_servers_info()
+                    .iter()
+                    .map(|s| s.name.clone())
+                    .collect();
+
+                // Force update on all available midi options.
+                self.state.midi_server = self.state.midi_server + 1;
+            }
+
+            self.feedback.update(&mut self.state);
+
+            // Try to keep settings from previous config.
+            self.feedback.update(&mut prev_state);
+            self.state = prev_state;
+
+            self.state.do_refresh_audio_servers = false;
+            self.state.do_refresh_midi_servers = false;
+            self.feedback.state.do_refresh_audio_servers = false;
+            self.feedback.state.do_refresh_midi_servers = false;
+        } else {
+            self.feedback.update(&mut self.state);
+        }
+
+        (&mut self.state, &self.feedback)
+    }
+}
+
+impl Default for DeviceIOHelper {
+    fn default() -> Self {
+        DeviceIOHelper::new()
+    }
+}
+
+pub struct DeviceIOHelperFeedback {
     os_info: DevicesInfo,
 
-    audio_server_options: RadioSelection,
-    audio_device_options: Option<RadioSelection>,
+    state: DeviceIOHelperState,
 
-    midi_server_options: RadioSelection,
+    audio_server_options: Vec<String>,
+    audio_device_options: Option<Vec<String>>,
 
-    sample_rate_options: Option<RadioSelection>,
-    buffer_size_options: Option<BufferSizeSelection>,
+    midi_server_options: Vec<String>,
+
+    sample_rate_options: Option<Vec<String>>,
+    buffer_size_options: Option<BufferSizeOptions>,
 
     audio_config: Option<AudioConfig>,
     audio_config_info: Option<AudioConfigInfo>,
 
     midi_config: Option<MidiConfig>,
 
-    audio_in_busses: Vec<AudioBusConfigState>,
-    audio_out_busses: Vec<AudioBusConfigState>,
-
-    midi_in_controllers: Vec<MidiControllerConfigState>,
-    midi_out_controllers: Vec<MidiControllerConfigState>,
-
     midi_in_port_options: Vec<String>,
     midi_out_port_options: Vec<String>,
 
-    created_audio_in_busses: usize,
-    created_audio_out_busses: usize,
-    created_midi_in_controllers: usize,
-    created_midi_out_controllers: usize,
+    // Interior mutability here is safe because these only count the number of
+    // times a new bus/controller is successfully created from the user calling
+    // `new_audio_in_bus()`, `new_audio_in_controller()`, etc.
+    // This is so a unique default name can be always be returned for the new bus/controller.
+    created_audio_in_busses: RefCell<usize>,
+    created_audio_out_busses: RefCell<usize>,
+    created_midi_in_controllers: RefCell<usize>,
+    created_midi_out_controllers: RefCell<usize>,
 }
 
-impl DeviceIOConfigHelper {
-    pub fn new() -> (Self, DeviceIOConfigState) {
+impl DeviceIOHelperFeedback {
+    fn new() -> (Self, DeviceIOHelperState) {
         let mut new_self = Self {
             os_info: DevicesInfo::new(),
 
-            audio_server_options: RadioSelection::new(),
+            state: DeviceIOHelperState::default(),
+
+            audio_server_options: Vec::new(),
             audio_device_options: None,
 
-            midi_server_options: RadioSelection::new(),
+            midi_server_options: Vec::new(),
 
             sample_rate_options: None,
             buffer_size_options: None,
@@ -164,75 +223,66 @@ impl DeviceIOConfigHelper {
 
             midi_config: None,
 
-            audio_in_busses: Vec::new(),
-            audio_out_busses: Vec::new(),
-
-            midi_in_controllers: Vec::new(),
-            midi_out_controllers: Vec::new(),
-
             midi_in_port_options: Vec::new(),
             midi_out_port_options: Vec::new(),
 
-            created_audio_in_busses: 1,
-            created_audio_out_busses: 1,
-            created_midi_in_controllers: 1,
-            created_midi_out_controllers: 0,
+            created_audio_in_busses: RefCell::new(0),
+            created_audio_out_busses: RefCell::new(0),
+            created_midi_in_controllers: RefCell::new(0),
+            created_midi_out_controllers: RefCell::new(0),
         };
 
-        new_self.audio_server_options.options = new_self
+        new_self.audio_server_options = new_self
             .os_info
             .audio_servers_info()
             .iter()
             .map(|s| s.name.clone())
             .collect();
 
-        new_self.midi_server_options.options = new_self
+        new_self.midi_server_options = new_self
             .os_info
             .midi_servers_info()
             .iter()
             .map(|s| s.name.clone())
             .collect();
 
-        let mut config_state = DeviceIOConfigState::default();
+        let mut new_state = DeviceIOHelperState::default();
 
         // Force update on all available options.
-        new_self.audio_server_options.selected = 1;
-        new_self.midi_server_options.selected = 1;
+        new_self.state.audio_server = 1;
+        new_self.state.midi_server = 1;
+        new_self.update(&mut new_state);
 
-        new_self.update(&mut config_state);
-
-        (new_self, config_state)
+        (new_self, new_state)
     }
 
-    pub fn update(&mut self, state: &mut DeviceIOConfigState) -> bool {
+    fn update(&mut self, new_state: &mut DeviceIOHelperState) -> bool {
         let mut audio_changed = false;
         let mut audio_device_changed = false;
 
         // Check if audio server selection changed
 
-        if state.audio_server != self.audio_server_options.selected {
-            let index = state
+        if new_state.audio_server != self.state.audio_server {
+            let index = new_state
                 .audio_server
-                .min(self.audio_server_options.options.len() - 1);
-            state.audio_server = index;
-            self.audio_server_options.selected = index;
+                .min(self.audio_server_options.len() - 1);
+            new_state.audio_server = index;
+            self.state.audio_server = index;
 
             // Rebuild available devices
 
             self.audio_device_options = if let Some(AudioServerDevices::MultipleDevices(devices)) =
-                &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
+                &self.os_info.audio_servers_info()[self.state.audio_server].devices
             {
                 let mut options = vec![String::from("None")]; // Always have "None" as the first option.
                 options.append(&mut devices.iter().map(|d| d.name.clone()).collect());
 
-                Some(RadioSelection {
-                    selected: 0,
-                    options,
-                })
+                Some(options)
             } else {
                 None
             };
-            state.audio_server_device = 0;
+            new_state.audio_server_device = 0;
+            self.state.audio_server_device = 0;
 
             audio_device_changed = true;
             audio_changed = true;
@@ -241,85 +291,88 @@ impl DeviceIOConfigHelper {
         // Check if device selection changed
 
         if let Some(audio_device_options) = &mut self.audio_device_options {
-            if state.audio_server_device != audio_device_options.selected {
-                let index = state
+            if new_state.audio_server_device != self.state.audio_server_device {
+                let index = new_state
                     .audio_server_device
-                    .min(audio_device_options.options.len() - 1);
-                state.audio_server_device = index;
-                audio_device_options.selected = index;
+                    .min(audio_device_options.len() - 1);
+                new_state.audio_server_device = index;
+                self.state.audio_server_device = index;
 
                 audio_device_changed = true;
                 audio_changed = true;
             }
         }
 
-        // Rebuild available options for device
+        // Rebuild available options for device if changed
 
         if audio_device_changed {
-            self.sample_rate_options = if let Some(device) = self.current_audio_device_info() {
-                // Sample rate options
-                let mut sample_rate_options = vec![String::from("Auto")]; // Always have "Auto" as the first option for sample rate.
-                sample_rate_options.append(
-                    &mut device
-                        .sample_rates
-                        .iter()
-                        .map(|s| format!("{}", s))
-                        .collect(),
-                );
+            let (sample_rate_options, buffer_size_options) =
+                if let Some(device) = self.current_audio_device_info() {
+                    // Sample rate options
+                    let mut sample_rate_options = vec![String::from("Auto")]; // Always have "Auto" as the first option for sample rate.
+                    sample_rate_options.append(
+                        &mut device
+                            .sample_rates
+                            .iter()
+                            .map(|s| format!("{}", s))
+                            .collect(),
+                    );
 
-                match &device.buffer_size {
-                    BufferSizeInfo::ConstantSize(size) => {
-                        self.buffer_size_options =
-                            Some(BufferSizeSelection::Constant { auto_value: *size })
-                    }
-                    BufferSizeInfo::Range { min, max } => {
-                        self.buffer_size_options = Some(BufferSizeSelection::Range {
-                            selected: DEFAULT_BUFFER_SIZE.min(*min).max(*max),
-                            auto_value: DEFAULT_BUFFER_SIZE.min(*min).max(*max),
-                            min: *min,
-                            max: *max,
-                        });
-                    }
-                    BufferSizeInfo::UnknownSize => {
-                        self.buffer_size_options = Some(BufferSizeSelection::UnknownSize);
-                    }
-                }
+                    let (buffer_size_options, value) = match &device.buffer_size {
+                        BufferSizeInfo::ConstantSize(size) => {
+                            (BufferSizeOptions::Constant { auto_value: *size }, *size)
+                        }
+                        BufferSizeInfo::Range { min, max } => (
+                            BufferSizeOptions::Range {
+                                auto_value: DEFAULT_BUFFER_SIZE.min(*min).max(*max),
+                                min: *min,
+                                max: *max,
+                            },
+                            DEFAULT_BUFFER_SIZE.min(*min).max(*max),
+                        ),
+                        BufferSizeInfo::UnknownSize => {
+                            (BufferSizeOptions::UnknownSize, DEFAULT_BUFFER_SIZE)
+                        }
+                    };
+                    new_state.buffer_size = value;
+                    self.state.buffer_size = value;
 
-                // Make sure there is always at-least one output.
-                let (audio_in_busses, audio_out_busses) = self.default_audio_busses();
-                self.audio_in_busses = audio_in_busses.clone();
-                self.audio_out_busses = audio_out_busses.clone();
-                state.audio_in_busses = audio_in_busses;
-                state.audio_out_busses = audio_out_busses;
+                    // Make sure there is always at-least one output.
+                    let (audio_in_busses, audio_out_busses) = self.default_audio_busses();
+                    self.state.audio_in_busses = audio_in_busses.clone();
+                    self.state.audio_out_busses = audio_out_busses.clone();
+                    new_state.audio_in_busses = audio_in_busses;
+                    new_state.audio_out_busses = audio_out_busses;
 
-                Some(RadioSelection {
-                    selected: 0,
-                    options: sample_rate_options,
-                })
-            } else {
-                state.sample_rate_index = 0;
+                    (Some(sample_rate_options), Some(buffer_size_options))
+                } else {
+                    new_state.sample_rate_index = 0;
 
-                self.buffer_size_options = None;
-                state.buffer_size = DEFAULT_BUFFER_SIZE;
+                    self.buffer_size_options = None;
+                    self.state.buffer_size = DEFAULT_BUFFER_SIZE;
+                    new_state.buffer_size = DEFAULT_BUFFER_SIZE;
 
-                self.audio_in_busses.clear();
-                self.audio_out_busses.clear();
-                state.audio_in_busses.clear();
-                state.audio_out_busses.clear();
+                    self.state.audio_in_busses.clear();
+                    self.state.audio_out_busses.clear();
+                    new_state.audio_in_busses.clear();
+                    new_state.audio_out_busses.clear();
 
-                None
-            }
+                    (None, None)
+                };
+
+            self.sample_rate_options = sample_rate_options;
+            self.buffer_size_options = buffer_size_options;
         }
 
         // Check if sample rate selection changed
 
         if let Some(sample_rate_options) = &mut self.sample_rate_options {
-            if state.sample_rate_index != sample_rate_options.selected {
-                let index = state
+            if new_state.sample_rate_index != self.state.sample_rate_index {
+                let index = new_state
                     .sample_rate_index
-                    .min(sample_rate_options.options.len() - 1);
-                state.sample_rate_index = index;
-                sample_rate_options.selected = index;
+                    .min(sample_rate_options.len() - 1);
+                new_state.sample_rate_index = index;
+                self.state.sample_rate_index = index;
 
                 audio_changed = true;
             }
@@ -328,107 +381,87 @@ impl DeviceIOConfigHelper {
         // Check if buffer size selection changed
 
         if let Some(buffer_size_options) = &mut self.buffer_size_options {
-            match buffer_size_options {
-                BufferSizeSelection::UnknownSize => {
-                    state.buffer_size = DEFAULT_BUFFER_SIZE; // Not that necessary, but make sure the user doesn't try to change this.
+            let new_size = match buffer_size_options {
+                BufferSizeOptions::UnknownSize => {
+                    DEFAULT_BUFFER_SIZE // Not that necessary, but make sure the user doesn't try to change this.
                 }
-                BufferSizeSelection::Constant { auto_value } => {
-                    state.buffer_size = *auto_value; // Make sure the user doesn't try to change this.
+                BufferSizeOptions::Constant { auto_value } => {
+                    *auto_value // Make sure the user doesn't try to change this.
                 }
-                BufferSizeSelection::Range {
-                    selected, min, max, ..
-                } => {
-                    if state.buffer_size != *selected {
-                        let size = state.buffer_size.min(*min).max(*max);
-                        state.buffer_size = size;
-                        *selected = size;
-
+                BufferSizeOptions::Range { min, max, .. } => {
+                    if new_state.buffer_size != self.state.buffer_size {
                         audio_changed = true;
+                        new_state.buffer_size.min(*min).max(*max)
+                    } else {
+                        new_state.buffer_size
                     }
                 }
-            }
+            };
+            new_state.buffer_size = new_size;
+            self.state.buffer_size = new_size;
         }
 
         // Check if audio busses have changed
 
-        // Flippin' immutable and mutable borrows. There is probably a way to elegantly use the `current_audio_device_info()` function,
-        // but I don't feel like messing with it right now. I'm inlining the function here instead.
-        let device = if let Some(devices) =
-            &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
+        if self.state.audio_in_busses != new_state.audio_in_busses
+            || self.state.audio_out_busses != new_state.audio_out_busses
         {
-            match &devices {
-                AudioServerDevices::SingleDevice(d) => Some(d),
-                AudioServerDevices::MultipleDevices(d) => {
-                    // The first device is "None"
-                    if self.audio_device_options.as_ref().unwrap().selected > 0 {
-                        Some(&d[self.audio_device_options.as_ref().unwrap().selected - 1])
-                    } else {
-                        None
-                    }
-                }
-            }
-        } else {
-            None
-        };
-        if let Some(device) = device {
-            if self.audio_in_busses != state.audio_in_busses
-                || self.audio_out_busses != state.audio_out_busses
-            {
-                self.audio_in_busses.clear();
-                self.audio_out_busses.clear();
+            let (audio_in_busses, audio_out_busses) =
+                if let Some(device) = self.current_audio_device_info() {
+                    let mut audio_in_busses = Vec::<AudioBusConfigState>::new();
+                    let mut audio_out_busses = Vec::<AudioBusConfigState>::new();
 
-                // Delete any busses marked for deletion.
-                state.audio_in_busses.retain(|d| !d.do_delete);
-                state.audio_out_busses.retain(|d| !d.do_delete);
+                    // Delete any busses marked for deletion.
+                    new_state.audio_in_busses.retain(|d| !d.do_delete);
+                    new_state.audio_out_busses.retain(|d| !d.do_delete);
 
-                for bus in state.audio_in_busses.iter_mut() {
-                    // Delete any ports with blank names.
-                    bus.system_ports.retain(|p| p.len() > 0);
+                    for bus in new_state.audio_in_busses.iter_mut() {
+                        // Delete any ports with blank names.
+                        bus.system_ports.retain(|p| p.len() > 0);
 
-                    let mut all_ports_exist = true;
-                    for port in bus.system_ports.iter() {
-                        if !device.in_ports.contains(port) {
-                            all_ports_exist = false;
-                            break;
+                        let mut all_ports_exist = true;
+                        for port in bus.system_ports.iter() {
+                            if !device.in_ports.contains(port) {
+                                all_ports_exist = false;
+                                break;
+                            }
+                        }
+
+                        // Disregard bus if it is invalid.
+                        if all_ports_exist && !bus.system_ports.is_empty() {
+                            audio_in_busses.push(bus.clone());
                         }
                     }
 
-                    // Disregard bus if it is invalid.
-                    if all_ports_exist && !bus.system_ports.is_empty() {
-                        self.audio_in_busses.push(bus.clone());
-                    }
-                }
+                    for bus in new_state.audio_out_busses.iter_mut() {
+                        // Delete any ports with blank names.
+                        bus.system_ports.retain(|p| p.len() > 0);
 
-                for bus in state.audio_out_busses.iter_mut() {
-                    // Delete any ports with blank names.
-                    bus.system_ports.retain(|p| p.len() > 0);
+                        let mut all_ports_exist = true;
+                        for port in bus.system_ports.iter() {
+                            if !device.out_ports.contains(port) {
+                                all_ports_exist = false;
+                                break;
+                            }
+                        }
 
-                    let mut all_ports_exist = true;
-                    for port in bus.system_ports.iter() {
-                        if !device.out_ports.contains(port) {
-                            all_ports_exist = false;
-                            break;
+                        // Disregard bus if it is invalid.
+                        if all_ports_exist && !bus.system_ports.is_empty() {
+                            audio_out_busses.push(bus.clone());
                         }
                     }
 
-                    // Disregard bus if it is invalid.
-                    if all_ports_exist && !bus.system_ports.is_empty() {
-                        self.audio_out_busses.push(bus.clone());
-                    }
-                }
+                    (audio_in_busses, audio_out_busses)
+                } else {
+                    (Vec::new(), Vec::new())
+                };
 
-                // Make sure there is always at-least one output bus.
-                if state.audio_out_busses.is_empty() {
-                    let (_, audio_out_busses) = self.default_audio_busses();
-                    self.audio_out_busses = audio_out_busses;
-                }
+            self.state.audio_in_busses = audio_in_busses.clone();
+            self.state.audio_out_busses = audio_out_busses.clone();
+            new_state.audio_in_busses = audio_in_busses;
+            new_state.audio_out_busses = audio_out_busses;
 
-                // Make sure state matches.
-                state.audio_in_busses = self.audio_in_busses.clone();
-                state.audio_out_busses = self.audio_out_busses.clone();
-
-                audio_changed = true;
-            }
+            audio_changed = true;
         }
 
         // Rebuild audio config if changed
@@ -457,50 +490,48 @@ impl DeviceIOConfigHelper {
 
         // Check if midi server selection changed
 
-        if state.midi_server != self.midi_server_options.selected {
-            let index = state
+        if new_state.midi_server != self.state.midi_server {
+            let index = new_state
                 .midi_server
-                .min(self.midi_server_options.options.len() - 1);
-            state.midi_server = index;
-            self.midi_server_options.selected = index;
+                .min(self.midi_server_options.len() - 1);
+            new_state.midi_server = index;
+            self.state.midi_server = index;
 
-            self.midi_in_port_options = self.os_info.midi_servers_info()
-                [self.midi_server_options.selected]
+            self.midi_in_port_options = self.os_info.midi_servers_info()[self.state.midi_server]
                 .in_devices
                 .iter()
                 .map(|d| d.name.clone())
                 .collect();
-            self.midi_out_port_options = self.os_info.midi_servers_info()
-                [self.midi_server_options.selected]
+            self.midi_out_port_options = self.os_info.midi_servers_info()[self.state.midi_server]
                 .out_devices
                 .iter()
                 .map(|d| d.name.clone())
                 .collect();
 
             let (midi_in_controllers, midi_out_controllers) = self.default_midi_controllers();
-            self.midi_in_controllers = midi_in_controllers.clone();
-            self.midi_out_controllers = midi_out_controllers.clone();
-            state.midi_in_controllers = midi_in_controllers;
-            state.midi_out_controllers = midi_out_controllers;
+            self.state.midi_in_controllers = midi_in_controllers.clone();
+            self.state.midi_out_controllers = midi_out_controllers.clone();
+            new_state.midi_in_controllers = midi_in_controllers;
+            new_state.midi_out_controllers = midi_out_controllers;
 
             midi_changed = true;
         }
 
         // Check if midi controllers have changed
 
-        if self.midi_in_controllers != state.midi_in_controllers
-            || self.midi_out_controllers != state.midi_out_controllers
+        if self.state.midi_in_controllers != new_state.midi_in_controllers
+            || self.state.midi_out_controllers != new_state.midi_out_controllers
         {
-            self.midi_in_controllers.clear();
-            self.midi_out_controllers.clear();
+            self.state.midi_in_controllers.clear();
+            self.state.midi_out_controllers.clear();
 
             // Delete any controllers marked for deletion.
-            state.midi_in_controllers.retain(|d| !d.do_delete);
-            state.midi_out_controllers.retain(|d| !d.do_delete);
+            new_state.midi_in_controllers.retain(|d| !d.do_delete);
+            new_state.midi_out_controllers.retain(|d| !d.do_delete);
 
-            for controller in state.midi_in_controllers.iter_mut() {
+            for controller in new_state.midi_in_controllers.iter_mut() {
                 let mut device_exists = false;
-                for device in self.os_info.midi_servers_info()[self.midi_server_options.selected]
+                for device in self.os_info.midi_servers_info()[self.state.midi_server]
                     .in_devices
                     .iter()
                 {
@@ -512,13 +543,13 @@ impl DeviceIOConfigHelper {
 
                 // Disregard controller if it is invalid.
                 if device_exists {
-                    self.midi_in_controllers.push(controller.clone());
+                    self.state.midi_in_controllers.push(controller.clone());
                 }
             }
 
-            for controller in state.midi_out_controllers.iter_mut() {
+            for controller in new_state.midi_out_controllers.iter_mut() {
                 let mut device_exists = false;
-                for device in self.os_info.midi_servers_info()[self.midi_server_options.selected]
+                for device in self.os_info.midi_servers_info()[self.state.midi_server]
                     .out_devices
                     .iter()
                 {
@@ -530,13 +561,13 @@ impl DeviceIOConfigHelper {
 
                 // Disregard controller if it is invalid.
                 if device_exists {
-                    self.midi_out_controllers.push(controller.clone());
+                    self.state.midi_out_controllers.push(controller.clone());
                 }
             }
 
             // Make sure state matches.
-            state.midi_in_controllers = self.midi_in_controllers.clone();
-            state.midi_out_controllers = self.midi_out_controllers.clone();
+            new_state.midi_in_controllers = self.state.midi_in_controllers.clone();
+            new_state.midi_out_controllers = self.state.midi_out_controllers.clone();
 
             midi_changed = true;
         }
@@ -550,14 +581,14 @@ impl DeviceIOConfigHelper {
         audio_changed || midi_changed
     }
 
-    pub fn new_audio_in_bus(&mut self) -> Option<AudioBusConfigState> {
+    pub fn new_audio_in_bus(&self) -> Option<AudioBusConfigState> {
         let new_bus = if let Some(device) = self.current_audio_device_info() {
             if device.in_ports.len() == 0 {
                 None
             } else {
                 // Find the index of the next available port.
                 let mut next_port_i = 1;
-                if let Some(last_bus) = self.audio_in_busses.last() {
+                if let Some(last_bus) = self.state.audio_in_busses.last() {
                     if let Some(last_port) = last_bus.system_ports.last() {
                         for port in device.in_ports.iter() {
                             if port == last_port {
@@ -567,12 +598,20 @@ impl DeviceIOConfigHelper {
                         }
                     }
                 }
-                if next_port_i >= device.in_ports.len() || self.audio_in_busses.is_empty() {
+                if next_port_i >= device.in_ports.len() || self.state.audio_in_busses.is_empty() {
                     next_port_i = 0;
                 }
 
+                // If this is the first time calling this method and a bus was already created by default,
+                // mark this new bus as the second one.
+                if *self.created_audio_in_busses.borrow() == 0
+                    && !self.state.audio_in_busses.is_empty()
+                {
+                    *self.created_audio_in_busses.borrow_mut() = 1;
+                }
+
                 Some(AudioBusConfigState {
-                    id: format!("Mic #{}", self.created_audio_in_busses + 1),
+                    id: format!("Mic #{}", *self.created_audio_in_busses.borrow() + 1),
                     system_ports: vec![device.in_ports[next_port_i].clone()],
                     do_delete: false,
                 })
@@ -582,17 +621,17 @@ impl DeviceIOConfigHelper {
         };
 
         if new_bus.is_some() {
-            self.created_audio_in_busses += 1;
+            *self.created_audio_in_busses.borrow_mut() += 1;
         }
 
         new_bus
     }
 
-    pub fn new_audio_out_bus(&mut self) -> Option<AudioBusConfigState> {
+    pub fn new_audio_out_bus(&self) -> Option<AudioBusConfigState> {
         let next_port = |device: &SystemDeviceInfo| {
             // Find the index of the next available port.
             let mut next_port_i = 1;
-            if let Some(last_bus) = self.audio_out_busses.last() {
+            if let Some(last_bus) = self.state.audio_out_busses.last() {
                 if let Some(last_port) = last_bus.system_ports.last() {
                     for port in device.out_ports.iter() {
                         if port == last_port {
@@ -602,7 +641,7 @@ impl DeviceIOConfigHelper {
                     }
                 }
             }
-            if next_port_i >= device.out_ports.len() || self.audio_out_busses.is_empty() {
+            if next_port_i >= device.out_ports.len() || self.state.audio_out_busses.is_empty() {
                 next_port_i = 0;
             }
             next_port_i
@@ -614,8 +653,19 @@ impl DeviceIOConfigHelper {
             } else if device.out_ports.len() == 1 {
                 let next_port_i = next_port(device);
 
+                // If this is the first time calling this method and a bus was already created by default,
+                // mark this new bus as the second one.
+                if *self.created_audio_out_busses.borrow() == 0
+                    && !self.state.audio_out_busses.is_empty()
+                {
+                    *self.created_audio_out_busses.borrow_mut() = 1;
+                }
+
                 Some(AudioBusConfigState {
-                    id: format!("Mono Speaker #{}", self.created_audio_out_busses + 1),
+                    id: format!(
+                        "Mono Speaker #{}",
+                        *self.created_audio_out_busses.borrow() + 1
+                    ),
                     system_ports: vec![device.out_ports[next_port_i].clone()],
                     do_delete: false,
                 })
@@ -627,8 +677,19 @@ impl DeviceIOConfigHelper {
                     next_port_i + 1
                 };
 
+                // If this is the first time calling this method and a bus was already created by default,
+                // mark this new bus as the second one.
+                if *self.created_audio_out_busses.borrow() == 0
+                    && !self.state.audio_out_busses.is_empty()
+                {
+                    *self.created_audio_out_busses.borrow_mut() = 1;
+                }
+
                 Some(AudioBusConfigState {
-                    id: format!("Stereo Speakers #{}", self.created_audio_out_busses + 1),
+                    id: format!(
+                        "Stereo Speakers #{}",
+                        *self.created_audio_out_busses.borrow() + 1
+                    ),
                     system_ports: vec![
                         device.out_ports[next_port_i].clone(),
                         device.out_ports[second_port_i].clone(),
@@ -641,17 +702,17 @@ impl DeviceIOConfigHelper {
         };
 
         if new_bus.is_some() {
-            self.created_audio_out_busses += 1;
+            *self.created_audio_out_busses.borrow_mut() += 1;
         }
 
         new_bus
     }
 
-    pub fn new_midi_in_controller(&mut self) -> Option<MidiControllerConfigState> {
+    pub fn new_midi_in_controller(&self) -> Option<MidiControllerConfigState> {
         let new_controller = if !self.midi_in_port_options.is_empty() {
             // Find the index of the next available port.
             let mut next_port_i = 1;
-            if let Some(last_controller) = self.midi_in_controllers.last() {
+            if let Some(last_controller) = self.state.midi_in_controllers.last() {
                 for port in self.midi_in_port_options.iter() {
                     if port == &last_controller.system_port {
                         break;
@@ -659,15 +720,24 @@ impl DeviceIOConfigHelper {
                     next_port_i += 1;
                 }
             }
-            if next_port_i >= self.midi_in_port_options.len() || self.midi_in_controllers.is_empty()
+            if next_port_i >= self.midi_in_port_options.len()
+                || self.state.midi_in_controllers.is_empty()
             {
                 next_port_i = 0;
+            }
+
+            // If this is the first time calling this method and a controller was already created by default,
+            // mark this new controller as the second one.
+            if *self.created_midi_in_controllers.borrow() == 0
+                && !self.state.midi_in_controllers.is_empty()
+            {
+                *self.created_midi_in_controllers.borrow_mut() = 1;
             }
 
             Some(MidiControllerConfigState {
                 id: format!(
                     "MIDI In Controller #{}",
-                    self.created_midi_in_controllers + 1
+                    *self.created_midi_in_controllers.borrow() + 1
                 ),
                 system_port: self.midi_in_port_options[next_port_i].clone(),
                 do_delete: false,
@@ -677,17 +747,17 @@ impl DeviceIOConfigHelper {
         };
 
         if new_controller.is_some() {
-            self.created_midi_in_controllers += 1;
+            *self.created_midi_in_controllers.borrow_mut() += 1;
         }
 
         new_controller
     }
 
-    pub fn new_midi_out_controller(&mut self) -> Option<MidiControllerConfigState> {
+    pub fn new_midi_out_controller(&self) -> Option<MidiControllerConfigState> {
         let new_controller = if !self.midi_out_port_options.is_empty() {
             // Find the index of the next available port.
             let mut next_port_i = 1;
-            if let Some(last_controller) = self.midi_out_controllers.last() {
+            if let Some(last_controller) = self.state.midi_out_controllers.last() {
                 for port in self.midi_out_port_options.iter() {
                     if port == &last_controller.system_port {
                         break;
@@ -696,15 +766,23 @@ impl DeviceIOConfigHelper {
                 }
             }
             if next_port_i >= self.midi_out_port_options.len()
-                || self.midi_out_controllers.is_empty()
+                || self.state.midi_out_controllers.is_empty()
             {
                 next_port_i = 0;
+            }
+
+            // If this is the first time calling this method and a controller was already created by default,
+            // mark this new controller as the second one.
+            if *self.created_midi_out_controllers.borrow() == 0
+                && !self.state.midi_out_controllers.is_empty()
+            {
+                *self.created_midi_out_controllers.borrow_mut() = 1;
             }
 
             Some(MidiControllerConfigState {
                 id: format!(
                     "MIDI Out Controller #{}",
-                    self.created_midi_out_controllers + 1,
+                    *self.created_midi_out_controllers.borrow() + 1,
                 ),
                 system_port: self.midi_out_port_options[next_port_i].clone(),
                 do_delete: false,
@@ -714,7 +792,7 @@ impl DeviceIOConfigHelper {
         };
 
         if new_controller.is_some() {
-            self.created_midi_out_controllers += 1;
+            *self.created_midi_out_controllers.borrow_mut() += 1;
         }
 
         new_controller
@@ -762,7 +840,7 @@ impl DeviceIOConfigHelper {
 
         // Only create a single midi input for now.
 
-        if let Some(device) = self.os_info.midi_servers_info()[self.midi_server_options.selected]
+        if let Some(device) = self.os_info.midi_servers_info()[self.state.midi_server]
             .in_devices
             .first()
         {
@@ -776,67 +854,24 @@ impl DeviceIOConfigHelper {
         (in_devices, out_devices)
     }
 
-    pub fn audio_server_options(&self) -> &RadioSelection {
+    pub fn audio_server_options(&self) -> &Vec<String> {
         &self.audio_server_options
     }
 
-    pub fn audio_server_device_options(&self) -> &Option<RadioSelection> {
+    pub fn audio_server_device_options(&self) -> &Option<Vec<String>> {
         &self.audio_device_options
     }
 
-    pub fn midi_server_options(&self) -> &RadioSelection {
+    pub fn midi_server_options(&self) -> &Vec<String> {
         &self.midi_server_options
     }
 
-    pub fn sample_rate_options(&self) -> &Option<RadioSelection> {
+    pub fn sample_rate_options(&self) -> &Option<Vec<String>> {
         &self.sample_rate_options
     }
 
-    pub fn buffer_size_options(&self) -> &Option<BufferSizeSelection> {
+    pub fn buffer_size_options(&self) -> &Option<BufferSizeOptions> {
         &self.buffer_size_options
-    }
-
-    pub fn refresh_audio_servers(&mut self, state: &mut DeviceIOConfigState) {
-        let mut prev_state = state.clone();
-
-        self.os_info.refresh_audio_servers();
-
-        self.audio_server_options.options = self
-            .os_info
-            .audio_servers_info()
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
-
-        // Force update on all available audio options.
-        self.audio_server_options.selected = state.audio_server + 1;
-        self.update(state);
-
-        // Try to keep settings of previous state.
-        self.update(&mut prev_state);
-
-        *state = prev_state;
-    }
-
-    pub fn refresh_midi_servers(&mut self, state: &mut DeviceIOConfigState) {
-        let mut prev_state = state.clone();
-
-        self.os_info.refresh_midi_servers();
-
-        self.midi_server_options.options = self
-            .os_info
-            .midi_servers_info()
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
-
-        // Force update on all available midi options.
-        self.midi_server_options.selected = state.midi_server + 1;
-        self.update(state);
-
-        // Try to keep settings of previous state.
-        self.update(&mut prev_state);
-        *state = prev_state;
     }
 
     pub fn audio_server_config(&self) -> &Option<AudioConfig> {
@@ -848,19 +883,19 @@ impl DeviceIOConfigHelper {
     }
 
     pub fn audio_server_unavailable(&self) -> bool {
-        !self.os_info.audio_servers_info()[self.audio_server_options.selected].available
+        !self.os_info.audio_servers_info()[self.state.audio_server].available
     }
 
     pub fn midi_server_unavailable(&self) -> bool {
-        !self.os_info.midi_servers_info()[self.midi_server_options.selected].available
+        !self.os_info.midi_servers_info()[self.state.midi_server].available
     }
 
     pub fn audio_server_device_not_selected(&self) -> bool {
         if let Some(AudioServerDevices::MultipleDevices(_)) =
-            &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
+            &self.os_info.audio_servers_info()[self.state.audio_server].devices
         {
             // First option is "None"
-            return self.audio_device_options.as_ref().unwrap().selected == 0;
+            return self.state.audio_server_device == 0;
         }
 
         false
@@ -868,11 +903,11 @@ impl DeviceIOConfigHelper {
 
     pub fn audio_server_device_playback_only(&self) -> bool {
         if let Some(AudioServerDevices::MultipleDevices(devices)) =
-            &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
+            &self.os_info.audio_servers_info()[self.state.audio_server].devices
         {
             // First option is "None"
-            if self.audio_device_options.as_ref().unwrap().selected > 0 {
-                return devices[self.audio_device_options.as_ref().unwrap().selected - 1]
+            if self.state.audio_server_device > 0 {
+                return devices[self.state.audio_server_device - 1]
                     .in_ports
                     .is_empty();
             }
@@ -885,61 +920,50 @@ impl DeviceIOConfigHelper {
         !self.audio_server_unavailable() && !self.audio_server_device_not_selected()
     }
 
-    pub fn audio_in_bus_config(&self) -> Option<(&[AudioBusConfigState], &[String])> {
+    pub fn audio_in_port_options(&self) -> Option<&[String]> {
         if let Some(device) = self.current_audio_device_info() {
             if !device.in_ports.is_empty() {
-                return Some((self.audio_in_busses.as_slice(), device.in_ports.as_slice()));
+                return Some(device.in_ports.as_slice());
             }
         }
 
         None
     }
 
-    pub fn audio_out_bus_config(&self) -> Option<(&[AudioBusConfigState], &[String])> {
+    pub fn audio_out_port_options(&self) -> Option<&[String]> {
         if let Some(device) = self.current_audio_device_info() {
             if !device.out_ports.is_empty() {
-                return Some((
-                    self.audio_out_busses.as_slice(),
-                    device.out_ports.as_slice(),
-                ));
+                return Some(device.out_ports.as_slice());
             }
         }
 
         None
     }
 
-    pub fn midi_in_controller_config(&self) -> Option<(&[MidiControllerConfigState], &[String])> {
+    pub fn midi_in_port_options(&self) -> Option<&[String]> {
         if !self.midi_in_port_options.is_empty() {
-            Some((
-                self.midi_in_controllers.as_slice(),
-                self.midi_in_port_options.as_slice(),
-            ))
+            Some(self.midi_in_port_options.as_slice())
         } else {
             None
         }
     }
 
-    pub fn midi_out_controller_config(&self) -> Option<(&[MidiControllerConfigState], &[String])> {
+    pub fn midi_out_port_options(&self) -> Option<&[String]> {
         if !self.midi_out_port_options.is_empty() {
-            Some((
-                self.midi_out_controllers.as_slice(),
-                self.midi_out_port_options.as_slice(),
-            ))
+            Some(self.midi_out_port_options.as_slice())
         } else {
             None
         }
     }
 
     fn current_audio_device_info(&self) -> Option<&SystemDeviceInfo> {
-        if let Some(devices) =
-            &self.os_info.audio_servers_info()[self.audio_server_options.selected].devices
-        {
+        if let Some(devices) = &self.os_info.audio_servers_info()[self.state.audio_server].devices {
             match &devices {
                 AudioServerDevices::SingleDevice(d) => Some(d),
                 AudioServerDevices::MultipleDevices(d) => {
                     // The first device is "None"
-                    if self.audio_device_options.as_ref().unwrap().selected > 0 {
-                        Some(&d[self.audio_device_options.as_ref().unwrap().selected - 1])
+                    if self.state.audio_server_device > 0 {
+                        Some(&d[self.state.audio_server_device - 1])
                     } else {
                         None
                     }
@@ -951,19 +975,19 @@ impl DeviceIOConfigHelper {
     }
 
     fn build_audio_config(&mut self) -> Option<AudioConfig> {
-        let server_info = &self.os_info.audio_servers_info()[self.audio_server_options.selected];
+        let server_info = &self.os_info.audio_servers_info()[self.state.audio_server];
 
         if !server_info.available {
             return None;
         }
 
         if let Some(device) = self.current_audio_device_info() {
-            let sample_rate = if let Some(sample_rate_options) = &self.sample_rate_options() {
-                if sample_rate_options.selected == 0 {
+            let sample_rate = if self.sample_rate_options.is_some() {
+                if self.state.sample_rate_index == 0 {
                     // First selection is always "Auto"
                     None
                 } else {
-                    Some(device.sample_rates[sample_rate_options.selected - 1])
+                    Some(device.sample_rates[self.state.sample_rate_index - 1])
                 }
             } else {
                 None
@@ -971,15 +995,16 @@ impl DeviceIOConfigHelper {
 
             let buffer_size = if let Some(buffer_size_options) = &self.buffer_size_options() {
                 match buffer_size_options {
-                    BufferSizeSelection::Constant { .. } => None,
-                    BufferSizeSelection::Range { selected, .. } => Some(*selected),
-                    BufferSizeSelection::UnknownSize => None,
+                    BufferSizeOptions::Constant { .. } => None,
+                    BufferSizeOptions::Range { .. } => Some(self.state.buffer_size),
+                    BufferSizeOptions::UnknownSize => None,
                 }
             } else {
                 None
             };
 
             let in_busses = self
+                .state
                 .audio_in_busses
                 .iter()
                 .map(|d| AudioBusConfig {
@@ -988,6 +1013,7 @@ impl DeviceIOConfigHelper {
                 })
                 .collect();
             let out_busses = self
+                .state
                 .audio_in_busses
                 .iter()
                 .map(|d| AudioBusConfig {
@@ -1010,17 +1036,18 @@ impl DeviceIOConfigHelper {
     }
 
     fn build_midi_config(&mut self) -> Option<MidiConfig> {
-        let server_info = &self.os_info.midi_servers_info()[self.midi_server_options.selected];
+        let server_info = &self.os_info.midi_servers_info()[self.state.midi_server];
 
         if !server_info.available {
             return None;
         }
 
-        if self.midi_in_controllers.is_empty() && self.midi_out_controllers.is_empty() {
+        if self.state.midi_in_controllers.is_empty() && self.state.midi_out_controllers.is_empty() {
             return None;
         }
 
         let in_controllers = self
+            .state
             .midi_in_controllers
             .iter()
             .map(|d| MidiControllerConfig {
@@ -1029,6 +1056,7 @@ impl DeviceIOConfigHelper {
             })
             .collect();
         let out_controllers = self
+            .state
             .midi_in_controllers
             .iter()
             .map(|d| MidiControllerConfig {
