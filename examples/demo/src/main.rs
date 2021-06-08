@@ -1,4 +1,5 @@
 use eframe::{egui, epi};
+use egui::ScrollArea;
 
 use rusty_daw_io::{
     BufferSizeOptions, DeviceIOHelper, DeviceIOHelperFeedback, DeviceIOHelperState,
@@ -23,6 +24,9 @@ enum SettingsTab {
 pub struct DemoApp {
     config_feedback: DeviceIOHelper,
     settings_tab: SettingsTab,
+
+    status_msg: String,
+    status_msg_open: bool,
 }
 
 impl epi::App for DemoApp {
@@ -34,6 +38,8 @@ impl epi::App for DemoApp {
         let Self {
             config_feedback,
             settings_tab,
+            status_msg,
+            status_msg_open,
         } = self;
 
         let (config_state, config_feedback) = config_feedback.update();
@@ -63,9 +69,25 @@ impl epi::App for DemoApp {
 
         let settings_tab = *settings_tab;
         egui::CentralPanel::default().show(ctx, |ui| match settings_tab {
-            SettingsTab::Audio => audio_settings(ui, config_state, config_feedback),
+            SettingsTab::Audio => audio_settings(
+                ui,
+                config_state,
+                config_feedback,
+                status_msg,
+                status_msg_open,
+            ),
             SettingsTab::Midi => midi_settings(ui, config_state, config_feedback),
         });
+
+        if *status_msg_open {
+            egui::Window::new("Status").show(ctx, |ui| {
+                ui.label(status_msg.as_str());
+
+                if ui.button("Ok").clicked() {
+                    *status_msg_open = false;
+                }
+            });
+        }
     }
 }
 
@@ -74,6 +96,8 @@ impl DemoApp {
         Self {
             config_feedback: Default::default(),
             settings_tab: SettingsTab::Audio,
+            status_msg: String::new(),
+            status_msg_open: false,
         }
     }
 }
@@ -82,18 +106,68 @@ fn audio_settings(
     ui: &mut egui::Ui,
     config_state: &mut DeviceIOHelperState,
     config_feedback: &DeviceIOHelperFeedback,
+    status_msg: &mut String,
+    status_msg_open: &mut bool,
 ) {
     ui.horizontal(|ui| {
+        use rusty_daw_io::save_file::{load_audio_config_from_file, write_audio_config_to_file};
+
         ui.heading("Audio Devices");
 
         if ui.button("Refresh").clicked() {
             config_state.do_refresh_audio_servers = true;
         }
+
+        // Can't figure out how to right-align elements in egui. Use spacing as a hacky
+        // way to mimic this.
+        ui.add_space(225.0);
+
+        if let Some(audio_config) = config_feedback.audio_server_config() {
+            if ui.button("Save Config").clicked() {
+                // Just using the root directory and a default filename, but you can use the system's
+                // file dialog instead.
+                match write_audio_config_to_file("test_audio_config.xml", audio_config) {
+                    Ok(()) => {
+                        *status_msg =
+                            String::from("Successfully saved config to \"test_audio_config.xml\"");
+                        println!("{}", status_msg);
+                    }
+                    Err(e) => {
+                        *status_msg = format!("Error saving config: {}", e);
+                        eprintln!("{}", status_msg);
+                    }
+                }
+
+                // Show the status message to the user as a pop-up window.
+                *status_msg_open = true;
+            }
+        } else {
+            ui.add(egui::Button::new("Save Config").enabled(false));
+        }
+
+        if ui.button("Load Config").clicked() {
+            // Just using the root directory and a default filename, but you can use the system's
+            // file dialog instead.
+            match load_audio_config_from_file("test_audio_config.xml") {
+                Ok(new_config) => {
+                    *status_msg =
+                        String::from("Successfully loaded config from \"test_audio_config.xml\"");
+                    println!("{}", status_msg);
+                }
+                Err(e) => {
+                    *status_msg = format!("Error loading config: {}", e);
+                    eprintln!("{}", status_msg);
+                }
+            }
+
+            // Show the status message to the user as a pop-up window.
+            *status_msg_open = true;
+        }
     });
 
     ui.separator();
 
-    ui.vertical(|ui| {
+    ScrollArea::auto_sized().show(ui, |ui| {
         ui.add_space(SPACING / 2.0);
 
         // Audio server (driver model)
@@ -349,7 +423,7 @@ fn midi_settings(
 
     ui.separator();
 
-    ui.vertical(|ui| {
+    ScrollArea::auto_sized().show(ui, |ui| {
         // Midi server (driver model)
 
         egui::ComboBox::from_label("Driver Model")

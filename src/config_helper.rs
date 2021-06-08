@@ -981,6 +981,10 @@ impl DeviceIOHelperFeedback {
             return None;
         }
 
+        if self.state.audio_out_busses.is_empty() {
+            return None;
+        }
+
         if let Some(device) = self.current_audio_device_info() {
             let sample_rate = if self.sample_rate_options.is_some() {
                 if self.state.sample_rate_index == 0 {
@@ -1014,7 +1018,7 @@ impl DeviceIOHelperFeedback {
                 .collect();
             let out_busses = self
                 .state
-                .audio_in_busses
+                .audio_out_busses
                 .iter()
                 .map(|d| AudioBusConfig {
                     id: d.id.clone(),
@@ -1057,7 +1061,7 @@ impl DeviceIOHelperFeedback {
             .collect();
         let out_controllers = self
             .state
-            .midi_in_controllers
+            .midi_out_controllers
             .iter()
             .map(|d| MidiControllerConfig {
                 id: d.id.clone(),
