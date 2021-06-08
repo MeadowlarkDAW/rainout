@@ -48,7 +48,7 @@ impl epi::App for DemoApp {
             status_msg.clear();
             for message in messages.iter() {
                 status_msg.push_str(message.as_str());
-                status_msg.push_str("\n");
+                status_msg.push_str("\n\n");
             }
             *status_msg_open = true;
         }
