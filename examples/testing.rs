@@ -1,6 +1,6 @@
 use rusty_daw_io::{
-    AudioBusConfig, AudioConfig, DevicesInfo, MidiConfig, MidiControllerConfig, ProcessInfo,
-    RtProcessHandler, StreamInfo,
+    AudioBusConfig, AudioConfig, DevicesInfo, FatalErrorHandler, FatalStreamError, MidiConfig,
+    MidiControllerConfig, ProcessInfo, RtProcessHandler, StreamInfo,
 };
 
 fn main() {
@@ -51,9 +51,7 @@ fn main() {
         Some(&midi_config),
         Some(String::from("testing")),
         MyRtProcessHandler {},
-        |e| {
-            println!("Fatal stream error: {:?}", e);
-        },
+        MyFatalErrorHandler {},
     )
     .unwrap();
 
@@ -70,4 +68,12 @@ struct MyRtProcessHandler {}
 impl RtProcessHandler for MyRtProcessHandler {
     fn init(&mut self, stream_info: &StreamInfo) {}
     fn process(&mut self, proc_info: ProcessInfo) {}
+}
+
+struct MyFatalErrorHandler {}
+
+impl FatalErrorHandler for MyFatalErrorHandler {
+    fn fatal_stream_error(self, error: FatalStreamError) {
+        println!("Fatal stream error: {}", error);
+    }
 }

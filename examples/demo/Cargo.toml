@@ -11,3 +11,4 @@ publish = false
 rusty-daw-io = { path = "../../" }
 eframe = "0.12.0"
 simple_logger = "1.11"
+ringbuf = "0.2.5"

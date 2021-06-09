@@ -1,8 +1,10 @@
 use eframe::{egui, epi};
 use egui::ScrollArea;
+use ringbuf::{Consumer, Producer, RingBuffer};
 
 use rusty_daw_io::{
     BufferSizeOptions, DeviceIOHelper, DeviceIOHelperFeedback, DeviceIOHelperState,
+    FatalErrorHandler, FatalStreamError, ProcessInfo, RtProcessHandler, StreamHandle, StreamInfo,
 };
 
 static SPACING: f32 = 30.0;
@@ -21,12 +23,34 @@ enum SettingsTab {
     Midi,
 }
 
+struct MyRtProcessHandler {}
+
+impl RtProcessHandler for MyRtProcessHandler {
+    fn init(&mut self, stream_info: &StreamInfo) {}
+    fn process(&mut self, proc_info: ProcessInfo) {}
+}
+
+struct MyFatalErrorHandler {
+    error_signal_tx: Producer<FatalStreamError>,
+}
+
+impl FatalErrorHandler for MyFatalErrorHandler {
+    fn fatal_stream_error(mut self, error: FatalStreamError) {
+        self.error_signal_tx.push(error).unwrap();
+    }
+}
+
 pub struct DemoApp {
     config_feedback: DeviceIOHelper,
     settings_tab: SettingsTab,
 
     status_msg: String,
     status_msg_open: bool,
+
+    audio_engine_running: bool,
+
+    stream_handle: Option<StreamHandle<MyRtProcessHandler, MyFatalErrorHandler>>,
+    error_signal_rx: Option<Consumer<FatalStreamError>>,
 }
 
 impl epi::App for DemoApp {
@@ -40,6 +64,9 @@ impl epi::App for DemoApp {
             settings_tab,
             status_msg,
             status_msg_open,
+            audio_engine_running,
+            stream_handle,
+            error_signal_rx,
         } = self;
 
         let (config_state, config_feedback, messages) = config_feedback.update();
@@ -53,18 +80,79 @@ impl epi::App for DemoApp {
             *status_msg_open = true;
         }
 
-        /*
+        if let Some(mut error_rx) = error_signal_rx.take() {
+            if let Some(error) = error_rx.pop() {
+                // Fatal stream error occurred. Stop the stream and refresh servers.
+                eprintln!("Fatal stream error: {}", error);
+
+                *audio_engine_running = false;
+                *stream_handle = None; // Settings this to `None` will cause the stream to cleanup and shutdown.
+
+                config_state.do_refresh_audio_servers = true;
+                config_state.do_refresh_midi_servers = true;
+
+                // Show the status message to the user as a pop-up window.
+                *status_msg = format!("Fatal stream error occurred: {}", error);
+                *status_msg_open = true;
+
+                // Drop the error signal receiver here.
+            } else {
+                // Keep the error signal receiver if there was no error.
+                *error_signal_rx = Some(error_rx);
+            }
+        }
+
         egui::TopPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
-            egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        frame.quit();
+            ui.horizontal(|ui| {
+                ui.set_min_height(60.0);
+
+                if let Some(audio_config) = config_feedback.audio_config() {
+                    if *audio_engine_running {
+                        if ui.button("Stop Audio Engine").clicked() {
+                            *audio_engine_running = false;
+                            *stream_handle = None; // Settings this to `None` will cause the stream to cleanup and shutdown.
+                            *error_signal_rx = None;
+                        }
+                    } else {
+                        if ui.button("Activate Audio Engine").clicked() {
+                            let midi_config = config_feedback.midi_config();
+
+                            // Create a channel for sending a "fatal stream error". Only one message can ever be sent.
+                            let (new_error_signal_tx, new_error_signal_rx) =
+                                RingBuffer::<FatalStreamError>::new(1).split();
+
+                            let my_process_handler = MyRtProcessHandler {};
+                            let my_fatal_error_hanlder = MyFatalErrorHandler {
+                                error_signal_tx: new_error_signal_tx,
+                            };
+
+                            *error_signal_rx = Some(new_error_signal_rx);
+
+                            match rusty_daw_io::spawn_rt_thread(
+                                audio_config,
+                                midi_config,
+                                None,
+                                my_process_handler,
+                                my_fatal_error_hanlder,
+                            ) {
+                                Ok(handle) => {
+                                    *stream_handle = Some(handle);
+                                    *audio_engine_running = true;
+                                }
+                                Err(e) => {
+                                    *status_msg = format!("Could not start audio engine: {}", e);
+
+                                    // Show the status message to the user as a pop-up window.
+                                    *status_msg_open = true;
+                                }
+                            }
+                        }
                     }
-                });
+                } else {
+                    ui.add(egui::Button::new("Activate Audio Engine").enabled(false));
+                }
             });
         });
-        */
 
         egui::SidePanel::left("side_panel", 200.0).show(ctx, |ui| {
             ui.heading("Settings");
@@ -77,21 +165,25 @@ impl epi::App for DemoApp {
         });
 
         let settings_tab = *settings_tab;
-        egui::CentralPanel::default().show(ctx, |ui| match settings_tab {
-            SettingsTab::Audio => audio_settings(
-                ui,
-                config_state,
-                config_feedback,
-                status_msg,
-                status_msg_open,
-            ),
-            SettingsTab::Midi => midi_settings(
-                ui,
-                config_state,
-                config_feedback,
-                status_msg,
-                status_msg_open,
-            ),
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.set_enabled(!*audio_engine_running);
+
+            match settings_tab {
+                SettingsTab::Audio => audio_settings(
+                    ui,
+                    config_state,
+                    config_feedback,
+                    status_msg,
+                    status_msg_open,
+                ),
+                SettingsTab::Midi => midi_settings(
+                    ui,
+                    config_state,
+                    config_feedback,
+                    status_msg,
+                    status_msg_open,
+                ),
+            }
         });
 
         if *status_msg_open {
@@ -113,6 +205,9 @@ impl DemoApp {
             settings_tab: SettingsTab::Audio,
             status_msg: String::new(),
             status_msg_open: false,
+            audio_engine_running: false,
+            stream_handle: None,
+            error_signal_rx: None,
         }
     }
 }
@@ -137,7 +232,7 @@ fn audio_settings(
         // way to mimic this.
         ui.add_space(150.0);
 
-        if let Some(audio_config) = config_feedback.audio_server_config() {
+        if let Some(audio_config) = config_feedback.audio_config() {
             if ui.button("Save Audio Config").clicked() {
                 // Just using the root directory and a default filename, but you can use the system's
                 // file dialog instead.
@@ -441,7 +536,7 @@ fn midi_settings(
         // way to mimic this.
         ui.add_space(180.0);
 
-        if let Some(midi_config) = config_feedback.midi_server_config() {
+        if let Some(midi_config) = config_feedback.midi_config() {
             if ui.button("Save Midi Config").clicked() {
                 // Just using the root directory and a default filename, but you can use the system's
                 // file dialog instead.

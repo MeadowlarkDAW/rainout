@@ -2,9 +2,9 @@ use log::{debug, info, warn};
 
 use crate::{
     AudioBus, AudioBusBuffer, AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo,
-    DeviceIndex, MidiController, MidiControllerBuffer, MidiControllerConfig, MidiDeviceInfo,
-    MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
-    SystemDeviceInfo,
+    DeviceIndex, FatalErrorHandler, FatalStreamError, MidiController, MidiControllerBuffer,
+    MidiControllerConfig, MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler,
+    SpawnRtThreadError, StreamInfo, SystemDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
@@ -90,24 +90,18 @@ pub fn refresh_midi_server(server: &mut MidiServerInfo) {
     }
 }
 
-pub struct JackRtThreadHandle<P: RtProcessHandler, E>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+pub struct JackRtThreadHandle<P: RtProcessHandler, E: FatalErrorHandler> {
     _async_client: jack::AsyncClient<JackNotificationHandler<E>, JackProcessHandler<P>>,
 }
 
-pub fn spawn_rt_thread<P: RtProcessHandler, E>(
+pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     audio_config: &AudioConfig,
     create_midi_in_controllers: &[MidiControllerConfig],
     create_midi_out_controllers: &[MidiControllerConfig],
     mut rt_process_handler: P,
-    error_callback: E,
+    fatal_error_handler: E,
     use_client_name: Option<String>,
-) -> Result<(StreamInfo, JackRtThreadHandle<P, E>), SpawnRtThreadError>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+) -> Result<(StreamInfo, JackRtThreadHandle<P, E>), SpawnRtThreadError> {
     info!("Spawning Jack thread...");
 
     let client_name = use_client_name.unwrap_or(String::from("rusty-daw-io"));
@@ -271,7 +265,7 @@ where
     // Activate the client, which starts the processing.
     let async_client = client.activate_async(
         JackNotificationHandler {
-            error_callback: Some(error_callback),
+            fatal_error_handler: Some(fatal_error_handler),
         },
         process,
     )?;
@@ -513,17 +507,11 @@ impl<P: RtProcessHandler> jack::ProcessHandler for JackProcessHandler<P> {
     }
 }
 
-struct JackNotificationHandler<E>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
-    error_callback: Option<E>,
+struct JackNotificationHandler<E: FatalErrorHandler> {
+    fatal_error_handler: Option<E>,
 }
 
-impl<E> jack::NotificationHandler for JackNotificationHandler<E>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+impl<E: FatalErrorHandler> jack::NotificationHandler for JackNotificationHandler<E> {
     fn thread_init(&self, _: &jack::Client) {
         debug!("JACK: thread init");
     }
@@ -536,8 +524,8 @@ where
 
         info!("{}", msg);
 
-        if let Some(error_callback) = self.error_callback.take() {
-            (error_callback)(StreamError::AudioServerDisconnected(msg))
+        if let Some(fatal_error_handler) = self.fatal_error_handler.take() {
+            fatal_error_handler.fatal_stream_error(FatalStreamError::AudioServerDisconnected(msg))
         }
     }
 

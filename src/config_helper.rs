@@ -1195,12 +1195,12 @@ impl DeviceIOHelperFeedback {
         &self.buffer_size_options
     }
 
-    pub fn audio_server_config(&self) -> &Option<AudioConfig> {
-        &self.audio_config
+    pub fn audio_config(&self) -> Option<&AudioConfig> {
+        self.audio_config.as_ref()
     }
 
-    pub fn midi_server_config(&self) -> &Option<MidiConfig> {
-        &self.midi_config
+    pub fn midi_config(&self) -> Option<&MidiConfig> {
+        self.midi_config.as_ref()
     }
 
     pub fn audio_config_info(&self) -> &Option<AudioConfigInfo> {

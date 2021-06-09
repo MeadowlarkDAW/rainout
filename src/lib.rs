@@ -19,6 +19,7 @@ pub mod system_info;
 pub use audio_buffer::*;
 pub use config::*;
 pub use config_helper::*;
+pub use error::*;
 pub use midi_buffer::*;
 pub use stream_info::*;
 pub use system_info::*;
@@ -28,14 +29,16 @@ pub mod save_file;
 #[cfg(feature = "save-file")]
 pub use save_file::*;
 
-use error::*;
-
 pub trait RtProcessHandler: 'static + Send {
     /// Initialize/allocate any buffers here. This will only be called once
     /// on creation.
     fn init(&mut self, stream_info: &StreamInfo);
 
     fn process(&mut self, proc_info: ProcessInfo);
+}
+
+pub trait FatalErrorHandler: 'static + Send + Sync {
+    fn fatal_stream_error(self, error: FatalStreamError);
 }
 
 pub struct ProcessInfo<'a> {
@@ -49,11 +52,7 @@ pub struct ProcessInfo<'a> {
     pub sample_rate: u32,
 }
 
-pub struct StreamHandle<P, E>
-where
-    P: RtProcessHandler,
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+pub struct StreamHandle<P: RtProcessHandler, E: FatalErrorHandler> {
     #[cfg(target_os = "linux")]
     os_handle: LinuxStreamHandle<P, E>,
 
@@ -61,11 +60,7 @@ where
     os_handle: WindowsStreamHandle<P, E>,
 }
 
-impl<P, E> StreamHandle<P, E>
-where
-    P: RtProcessHandler,
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+impl<P: RtProcessHandler, E: FatalErrorHandler> StreamHandle<P, E> {
     pub fn stream_info(&self) -> &StreamInfo {
         self.os_handle.stream_info()
     }
@@ -110,7 +105,7 @@ impl DevicesInfo {
 
 trait OsStreamHandle {
     type P: RtProcessHandler;
-    type E: 'static + Send + Sync + FnOnce(StreamError);
+    type E: FatalErrorHandler;
 
     fn stream_info(&self) -> &StreamInfo;
 }
@@ -129,17 +124,13 @@ trait OsDevicesInfo {
     fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32>;
 }
 
-pub fn spawn_rt_thread<P, E>(
+pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     audio_config: &AudioConfig,
     midi_config: Option<&MidiConfig>,
     use_client_name: Option<String>,
     rt_process_handler: P,
-    error_callback: E,
-) -> Result<StreamHandle<P, E>, SpawnRtThreadError>
-where
-    P: RtProcessHandler,
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+    fatal_error_hanlder: E,
+) -> Result<StreamHandle<P, E>, SpawnRtThreadError> {
     check_duplicate_ids(audio_config, midi_config)?;
 
     #[cfg(target_os = "linux")]
@@ -150,7 +141,7 @@ where
                 midi_config,
                 use_client_name,
                 rt_process_handler,
-                error_callback,
+                fatal_error_hanlder,
             )?,
         })
     }
@@ -163,7 +154,7 @@ where
                 midi_config,
                 use_client_name,
                 rt_process_handler,
-                error_callback,
+                fatal_error_hanlder,
             )?,
         })
     }

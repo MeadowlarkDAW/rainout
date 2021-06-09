@@ -1,22 +1,17 @@
 use super::{
-    AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo, MidiConfig, MidiServerInfo,
-    OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamError, StreamInfo,
+    AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo, FatalErrorHandler,
+    MidiConfig, MidiServerInfo, OsDevicesInfo, OsStreamHandle, RtProcessHandler,
+    SpawnRtThreadError, StreamInfo,
 };
 
 mod jack_backend;
 
-pub struct LinuxStreamHandle<P: RtProcessHandler, E>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+pub struct LinuxStreamHandle<P: RtProcessHandler, E: FatalErrorHandler> {
     stream_info: StreamInfo,
     _jack_server_handle: Option<jack_backend::JackRtThreadHandle<P, E>>,
 }
 
-impl<P: RtProcessHandler, E> OsStreamHandle for LinuxStreamHandle<P, E>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+impl<P: RtProcessHandler, E: FatalErrorHandler> OsStreamHandle for LinuxStreamHandle<P, E> {
     type P = P;
     type E = E;
 
@@ -125,16 +120,13 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     }
 }
 
-pub fn spawn_rt_thread<P: RtProcessHandler, E>(
+pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     audio_config: &AudioConfig,
     midi_config: Option<&MidiConfig>,
     use_client_name: Option<String>,
     rt_process_handler: P,
-    error_callback: E,
-) -> Result<LinuxStreamHandle<P, E>, SpawnRtThreadError>
-where
-    E: 'static + Send + Sync + FnOnce(StreamError),
-{
+    fatal_error_handler: E,
+) -> Result<LinuxStreamHandle<P, E>, SpawnRtThreadError> {
     let midi_server_name = midi_config.map(|m| m.server.as_str()).unwrap_or("");
 
     match audio_config.server.as_str() {
@@ -146,7 +138,7 @@ where
                         &midi_config.in_controllers,
                         &midi_config.out_controllers,
                         rt_process_handler,
-                        error_callback,
+                        fatal_error_handler,
                         use_client_name,
                     )?;
 
@@ -162,7 +154,7 @@ where
                 &[],
                 &[],
                 rt_process_handler,
-                error_callback,
+                fatal_error_handler,
                 use_client_name,
             )?;
 

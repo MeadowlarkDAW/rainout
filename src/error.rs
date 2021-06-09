@@ -49,24 +49,24 @@ impl std::fmt::Display for SpawnRtThreadError {
 }
 
 #[derive(Debug)]
-pub enum StreamError {
+pub enum FatalStreamError {
     AudioServerDisconnected(String),
     AudioDeviceDisconnected(String),
     PlatformSpecific(Box<dyn std::error::Error + Send + 'static>),
 }
 
-impl std::error::Error for StreamError {}
+impl std::error::Error for FatalStreamError {}
 
-impl std::fmt::Display for StreamError {
+impl std::fmt::Display for FatalStreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StreamError::AudioServerDisconnected(server) => {
+            FatalStreamError::AudioServerDisconnected(server) => {
                 write!(f, "The audio sever was disconnected: {}", server)
             }
-            StreamError::AudioDeviceDisconnected(device) => {
+            FatalStreamError::AudioDeviceDisconnected(device) => {
                 write!(f, "The audio device was disconnected: {}", device)
             }
-            StreamError::PlatformSpecific(e) => {
+            FatalStreamError::PlatformSpecific(e) => {
                 write!(f, "Platform error: {}", e)
             }
         }
