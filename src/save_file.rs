@@ -8,54 +8,61 @@ use std::path::PathBuf;
 
 pub const VERSION: &'static str = "0.1";
 
-static XML_INDENT_SPACES: usize = 2;
+static XML_INDENT_SPACES: usize = 3;
 
-use crate::{AudioBusConfig, AudioConfig, MidiConfig, MidiControllerConfig};
+use crate::{AudioBusConfig, Config, MidiControllerConfig};
 
-pub fn load_audio_config_from_file<P: Into<PathBuf>>(
-    path: P,
-) -> Result<AudioConfig, ConfigFileError> {
+pub fn load_config_from_file<P: Into<PathBuf>>(path: P) -> Result<Config, ConfigFileError> {
     let mut xml_reader = Reader::from_file(path.into())?;
     xml_reader.trim_text(true);
 
     let mut buf = Vec::new();
 
-    let mut config = AudioConfig {
-        server: String::new(),
-        system_device: String::new(),
+    let mut config = Config {
+        audio_server: String::new(),
+        system_audio_device: String::new(),
 
-        in_busses: Vec::new(),
-        out_busses: Vec::new(),
+        audio_in_busses: Vec::new(),
+        audio_out_busses: Vec::new(),
 
         sample_rate: None,
         buffer_size: None,
+
+        midi_server: None,
+
+        midi_in_controllers: Vec::new(),
+        midi_out_controllers: Vec::new(),
     };
 
     enum ReadState {
         Invalid,
-        Server,
-        SystemDevice,
+        AudioServer,
+        MidiServer,
+        SystemAudioDevice,
         Port,
         SampleRate,
         BufferSize,
     }
 
-    enum BusState {
-        In,
-        Out,
+    enum BusControllerState {
+        AudioIn,
+        AudioOut,
+        MidiIn,
+        MidiOut,
         Invalid,
     }
 
     let mut read_state = ReadState::Invalid;
-    let mut bus_state = BusState::Invalid;
+    let mut bus_controller_state = BusControllerState::Invalid;
 
     loop {
         match xml_reader.read_event(&mut buf) {
             Ok(Event::Start(ref event)) => match event.name() {
-                b"server" => read_state = ReadState::Server,
-                b"system_device" => read_state = ReadState::SystemDevice,
-                b"in_busses" => bus_state = BusState::In,
-                b"out_busses" => bus_state = BusState::Out,
+                b"audio_server" => read_state = ReadState::AudioServer,
+                b"midi_server" => read_state = ReadState::MidiServer,
+                b"system_audio_device" => read_state = ReadState::SystemAudioDevice,
+                b"audio_in_busses" => bus_controller_state = BusControllerState::AudioIn,
+                b"audio_out_busses" => bus_controller_state = BusControllerState::AudioOut,
                 b"bus" => {
                     let mut id = String::new();
                     for a in event.attributes() {
@@ -68,20 +75,54 @@ pub fn load_audio_config_from_file<P: Into<PathBuf>>(
                         }
                     }
 
-                    match bus_state {
-                        BusState::In => {
-                            config.in_busses.push(AudioBusConfig {
+                    match bus_controller_state {
+                        BusControllerState::AudioIn => {
+                            config.audio_in_busses.push(AudioBusConfig {
                                 id,
                                 system_ports: Vec::new(),
                             });
                         }
-                        BusState::Out => {
-                            config.out_busses.push(AudioBusConfig {
+                        BusControllerState::AudioOut => {
+                            config.audio_out_busses.push(AudioBusConfig {
                                 id,
                                 system_ports: Vec::new(),
                             });
                         }
-                        BusState::Invalid => {
+                        _ => {
+                            return Err(ConfigFileError::InvalidConfigFile(
+                                xml_reader.buffer_position(),
+                            ));
+                        }
+                    }
+                }
+                b"midi_in_controllers" => bus_controller_state = BusControllerState::MidiIn,
+                b"midi_out_controllers" => bus_controller_state = BusControllerState::MidiOut,
+                b"controller" => {
+                    let mut id = String::new();
+                    for a in event.attributes() {
+                        let a = a?;
+                        if a.key == b"id" {
+                            id = String::from_utf8(a.value.to_vec()).map_err(|_| {
+                                ConfigFileError::FailedToParseUTF8(a.value.to_vec())
+                            })?;
+                            break;
+                        }
+                    }
+
+                    match bus_controller_state {
+                        BusControllerState::MidiIn => {
+                            config.midi_in_controllers.push(MidiControllerConfig {
+                                id,
+                                system_port: String::new(),
+                            });
+                        }
+                        BusControllerState::MidiOut => {
+                            config.midi_out_controllers.push(MidiControllerConfig {
+                                id,
+                                system_port: String::new(),
+                            });
+                        }
+                        _ => {
                             return Err(ConfigFileError::InvalidConfigFile(
                                 xml_reader.buffer_position(),
                             ));
@@ -94,29 +135,79 @@ pub fn load_audio_config_from_file<P: Into<PathBuf>>(
                 _ => read_state = ReadState::Invalid,
             },
             Ok(Event::Text(ref event)) => {
-                let text = event.unescape_and_decode(&xml_reader)?;
+                let mut text = event.unescape_and_decode(&xml_reader)?;
 
                 match &read_state {
-                    ReadState::Server => config.server = text,
-                    ReadState::SystemDevice => config.system_device = text,
+                    ReadState::AudioServer => config.audio_server = text,
+                    ReadState::MidiServer => {
+                        let mut temp_text = text.clone();
+                        temp_text.make_ascii_lowercase();
+
+                        if temp_text == "none" {
+                            config.midi_server = None;
+                        } else {
+                            config.midi_server = Some(text);
+                        }
+                    }
+                    ReadState::SystemAudioDevice => config.system_audio_device = text,
                     ReadState::Port => {
-                        let bus = match &bus_state {
-                            BusState::In => config.in_busses.last_mut().ok_or_else(|| {
-                                ConfigFileError::InvalidConfigFile(xml_reader.buffer_position())
-                            })?,
-                            BusState::Out => config.out_busses.last_mut().ok_or_else(|| {
-                                ConfigFileError::InvalidConfigFile(xml_reader.buffer_position())
-                            })?,
-                            BusState::Invalid => {
+                        match &bus_controller_state {
+                            BusControllerState::AudioIn => {
+                                config
+                                    .audio_in_busses
+                                    .last_mut()
+                                    .ok_or_else(|| {
+                                        ConfigFileError::InvalidConfigFile(
+                                            xml_reader.buffer_position(),
+                                        )
+                                    })?
+                                    .system_ports
+                                    .push(text);
+                            }
+                            BusControllerState::AudioOut => {
+                                config
+                                    .audio_out_busses
+                                    .last_mut()
+                                    .ok_or_else(|| {
+                                        ConfigFileError::InvalidConfigFile(
+                                            xml_reader.buffer_position(),
+                                        )
+                                    })?
+                                    .system_ports
+                                    .push(text);
+                            }
+                            BusControllerState::MidiIn => {
+                                config
+                                    .midi_in_controllers
+                                    .last_mut()
+                                    .ok_or_else(|| {
+                                        ConfigFileError::InvalidConfigFile(
+                                            xml_reader.buffer_position(),
+                                        )
+                                    })?
+                                    .system_port = text;
+                            }
+                            BusControllerState::MidiOut => {
+                                config
+                                    .midi_out_controllers
+                                    .last_mut()
+                                    .ok_or_else(|| {
+                                        ConfigFileError::InvalidConfigFile(
+                                            xml_reader.buffer_position(),
+                                        )
+                                    })?
+                                    .system_port = text;
+                            }
+                            BusControllerState::Invalid => {
                                 return Err(ConfigFileError::InvalidConfigFile(
                                     xml_reader.buffer_position(),
                                 ));
                             }
                         };
-
-                        bus.system_ports.push(text);
                     }
                     ReadState::SampleRate => {
+                        text.make_ascii_lowercase();
+
                         config.sample_rate = if &text == "auto" {
                             None
                         } else if let Ok(s) = text.parse::<u32>() {
@@ -126,6 +217,8 @@ pub fn load_audio_config_from_file<P: Into<PathBuf>>(
                         };
                     }
                     ReadState::BufferSize => {
+                        text.make_ascii_lowercase();
+
                         config.buffer_size = if &text == "auto" {
                             None
                         } else if let Ok(s) = text.parse::<u32>() {
@@ -148,120 +241,9 @@ pub fn load_audio_config_from_file<P: Into<PathBuf>>(
     Ok(config)
 }
 
-pub fn load_midi_config_from_file<P: Into<PathBuf>>(
+pub fn write_config_to_file<P: Into<PathBuf>>(
     path: P,
-) -> Result<MidiConfig, ConfigFileError> {
-    let mut xml_reader = Reader::from_file(path.into())?;
-    xml_reader.trim_text(true);
-
-    let mut buf = Vec::new();
-
-    let mut config = MidiConfig {
-        server: String::new(),
-
-        in_controllers: Vec::new(),
-        out_controllers: Vec::new(),
-    };
-
-    enum ReadState {
-        Invalid,
-        Server,
-        SystemPort,
-    }
-
-    enum ControllerState {
-        In,
-        Out,
-        Invalid,
-    }
-
-    let mut read_state = ReadState::Invalid;
-    let mut controller_state = ControllerState::Invalid;
-
-    loop {
-        match xml_reader.read_event(&mut buf) {
-            Ok(Event::Start(ref event)) => match event.name() {
-                b"server" => read_state = ReadState::Server,
-                b"in_controllers" => controller_state = ControllerState::In,
-                b"out_controllers" => controller_state = ControllerState::Out,
-                b"controller" => {
-                    let mut id = String::new();
-                    for a in event.attributes() {
-                        let a = a?;
-                        if a.key == b"id" {
-                            id = String::from_utf8(a.value.to_vec()).map_err(|_| {
-                                ConfigFileError::FailedToParseUTF8(a.value.to_vec())
-                            })?;
-                            break;
-                        }
-                    }
-
-                    match controller_state {
-                        ControllerState::In => {
-                            config.in_controllers.push(MidiControllerConfig {
-                                id,
-                                system_port: String::new(),
-                            });
-                        }
-                        ControllerState::Out => {
-                            config.out_controllers.push(MidiControllerConfig {
-                                id,
-                                system_port: String::new(),
-                            });
-                        }
-                        ControllerState::Invalid => {
-                            return Err(ConfigFileError::InvalidConfigFile(
-                                xml_reader.buffer_position(),
-                            ));
-                        }
-                    }
-                }
-                b"system_port" => read_state = ReadState::SystemPort,
-                _ => read_state = ReadState::Invalid,
-            },
-            Ok(Event::Text(ref event)) => {
-                let text = event.unescape_and_decode(&xml_reader)?;
-
-                match &read_state {
-                    ReadState::Server => config.server = text,
-                    ReadState::SystemPort => {
-                        let controller = match &controller_state {
-                            ControllerState::In => {
-                                config.in_controllers.last_mut().ok_or_else(|| {
-                                    ConfigFileError::InvalidConfigFile(xml_reader.buffer_position())
-                                })?
-                            }
-                            ControllerState::Out => {
-                                config.out_controllers.last_mut().ok_or_else(|| {
-                                    ConfigFileError::InvalidConfigFile(xml_reader.buffer_position())
-                                })?
-                            }
-                            ControllerState::Invalid => {
-                                return Err(ConfigFileError::InvalidConfigFile(
-                                    xml_reader.buffer_position(),
-                                ));
-                            }
-                        };
-
-                        controller.system_port = text;
-                    }
-                    ReadState::Invalid => (),
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(ConfigFileError::Xml(e)),
-            _ => (),
-        }
-
-        buf.clear();
-    }
-
-    Ok(config)
-}
-
-pub fn write_audio_config_to_file<P: Into<PathBuf>>(
-    path: P,
-    config: &AudioConfig,
+    config: &Config,
 ) -> Result<(), ConfigFileError> {
     let write_audio_bus_config = |xml_writer: &mut Writer<Cursor<Vec<u8>>>,
                                   bus: &AudioBusConfig|
@@ -286,47 +268,70 @@ pub fn write_audio_config_to_file<P: Into<PathBuf>>(
         Ok(())
     };
 
+    let write_midi_controller_config = |xml_writer: &mut Writer<Cursor<Vec<u8>>>,
+                                        controller: &MidiControllerConfig|
+     -> Result<(), ConfigFileError> {
+        let mut controller_elem = BytesStart::owned(b"controller".to_vec(), "controller".len());
+        controller_elem.push_attribute(("id", controller.id.as_str()));
+        xml_writer.write_event(Event::Start(controller_elem))?;
+
+        // System Port
+        let port_elem = BytesStart::owned(b"port".to_vec(), "port".len());
+        xml_writer.write_event(Event::Start(port_elem))?;
+        xml_writer.write_event(Event::Text(BytesText::from_plain_str(
+            &controller.system_port,
+        )))?;
+        xml_writer.write_event(Event::End(BytesEnd::borrowed(b"port")))?;
+
+        xml_writer.write_event(Event::End(BytesEnd::borrowed(b"controller")))?;
+
+        Ok(())
+    };
+
     let mut xml_writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', XML_INDENT_SPACES);
 
     // Start
 
-    let mut audio_config_elem = BytesStart::owned(b"audio_config".to_vec(), "audio_config".len());
-    audio_config_elem.push_attribute(("version", VERSION));
-    xml_writer.write_event(Event::Start(audio_config_elem))?;
+    let mut config_elem = BytesStart::owned(b"config".to_vec(), "config".len());
+    config_elem.push_attribute(("version", VERSION));
+    xml_writer.write_event(Event::Start(config_elem))?;
 
-    // Server
+    // Audio Server
 
-    let server_elem = BytesStart::owned(b"server".to_vec(), "server".len());
+    let server_elem = BytesStart::owned(b"audio_server".to_vec(), "audio_server".len());
     xml_writer.write_event(Event::Start(server_elem))?;
-    xml_writer.write_event(Event::Text(BytesText::from_plain_str(&config.server)))?;
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"server")))?;
+    xml_writer.write_event(Event::Text(BytesText::from_plain_str(&config.audio_server)))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"audio_server")))?;
 
-    // System Device
+    // System Audio Device
 
-    let server_device_elem = BytesStart::owned(b"system_device".to_vec(), "system_device".len());
-    xml_writer.write_event(Event::Start(server_device_elem))?;
+    let audio_device_elem =
+        BytesStart::owned(b"system_audio_device".to_vec(), "system_audio_device".len());
+    xml_writer.write_event(Event::Start(audio_device_elem))?;
     xml_writer.write_event(Event::Text(BytesText::from_plain_str(
-        &config.system_device,
+        &config.system_audio_device,
     )))?;
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"system_device")))?;
-
-    // Audio In Busses
-
-    let in_busses_elem = BytesStart::owned(b"in_busses".to_vec(), "in_busses".len());
-    xml_writer.write_event(Event::Start(in_busses_elem))?;
-    for bus in config.in_busses.iter() {
-        write_audio_bus_config(&mut xml_writer, bus)?;
-    }
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"in_busses")))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"system_audio_device")))?;
 
     // Audio Out Busses
 
-    let out_busses_elem = BytesStart::owned(b"out_busses".to_vec(), "out_busses".len());
-    xml_writer.write_event(Event::Start(out_busses_elem))?;
-    for bus in config.out_busses.iter() {
+    let audio_out_busses_elem =
+        BytesStart::owned(b"audio_out_busses".to_vec(), "audio_out_busses".len());
+    xml_writer.write_event(Event::Start(audio_out_busses_elem))?;
+    for bus in config.audio_out_busses.iter() {
         write_audio_bus_config(&mut xml_writer, bus)?;
     }
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"out_busses")))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"audio_out_busses")))?;
+
+    // Audio In Busses
+
+    let audio_in_busses_elem =
+        BytesStart::owned(b"audio_in_busses".to_vec(), "audio_in_busses".len());
+    xml_writer.write_event(Event::Start(audio_in_busses_elem))?;
+    for bus in config.audio_in_busses.iter() {
+        write_audio_bus_config(&mut xml_writer, bus)?;
+    }
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"audio_in_busses")))?;
 
     // Sample Rate
 
@@ -352,79 +357,43 @@ pub fn write_audio_config_to_file<P: Into<PathBuf>>(
     xml_writer.write_event(Event::Text(BytesText::from_plain_str(&t)))?;
     xml_writer.write_event(Event::End(BytesEnd::borrowed(b"buffer_size")))?;
 
-    // End
+    // Midi Server
 
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"audio_config")))?;
-
-    let xml_result = xml_writer.into_inner().into_inner();
-
-    let mut file = File::create(path.into())?;
-    file.write_all(&xml_result)?;
-
-    Ok(())
-}
-
-pub fn write_midi_config_to_file<P: Into<PathBuf>>(
-    path: P,
-    config: &MidiConfig,
-) -> Result<(), ConfigFileError> {
-    let write_midi_controller_config = |xml_writer: &mut Writer<Cursor<Vec<u8>>>,
-                                        controller: &MidiControllerConfig|
-     -> Result<(), ConfigFileError> {
-        let mut controller_elem = BytesStart::owned(b"controller".to_vec(), "controller".len());
-        controller_elem.push_attribute(("id", controller.id.as_str()));
-        xml_writer.write_event(Event::Start(controller_elem))?;
-
-        // System Port
-        let system_port_elem = BytesStart::owned(b"system_port".to_vec(), "system_port".len());
-        xml_writer.write_event(Event::Start(system_port_elem))?;
-        xml_writer.write_event(Event::Text(BytesText::from_plain_str(
-            &controller.system_port,
-        )))?;
-        xml_writer.write_event(Event::End(BytesEnd::borrowed(b"system_port")))?;
-
-        xml_writer.write_event(Event::End(BytesEnd::borrowed(b"controller")))?;
-
-        Ok(())
+    let midi_server_elem = BytesStart::owned(b"midi_server".to_vec(), "midi_server".len());
+    xml_writer.write_event(Event::Start(midi_server_elem))?;
+    let t = if let Some(midi_server) = &config.midi_server {
+        midi_server.clone()
+    } else {
+        String::from("none")
     };
-
-    let mut xml_writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', XML_INDENT_SPACES);
-
-    // Start
-
-    let mut midi_config_elem = BytesStart::owned(b"midi_config".to_vec(), "midi_config".len());
-    midi_config_elem.push_attribute(("version", VERSION));
-    xml_writer.write_event(Event::Start(midi_config_elem))?;
-
-    // Server
-
-    let server_elem = BytesStart::owned(b"server".to_vec(), "server".len());
-    xml_writer.write_event(Event::Start(server_elem))?;
-    xml_writer.write_event(Event::Text(BytesText::from_plain_str(&config.server)))?;
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"server")))?;
+    xml_writer.write_event(Event::Text(BytesText::from_plain_str(&t)))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"midi_server")))?;
 
     // In Controllers
 
-    let in_controllers_elem = BytesStart::owned(b"in_controllers".to_vec(), "in_controllers".len());
-    xml_writer.write_event(Event::Start(in_controllers_elem))?;
-    for controller in config.in_controllers.iter() {
+    let midi_in_controllers_elem =
+        BytesStart::owned(b"midi_in_controllers".to_vec(), "midi_in_controllers".len());
+    xml_writer.write_event(Event::Start(midi_in_controllers_elem))?;
+    for controller in config.midi_in_controllers.iter() {
         write_midi_controller_config(&mut xml_writer, controller)?;
     }
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"in_controllers")))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"midi_in_controllers")))?;
 
     // Out Controllers
 
-    let out_controllers_elem =
-        BytesStart::owned(b"out_controllers".to_vec(), "out_controllers".len());
-    xml_writer.write_event(Event::Start(out_controllers_elem))?;
-    for controller in config.out_controllers.iter() {
+    let midi_out_controllers_elem = BytesStart::owned(
+        b"midi_out_controllers".to_vec(),
+        "midi_out_controllers".len(),
+    );
+    xml_writer.write_event(Event::Start(midi_out_controllers_elem))?;
+    for controller in config.midi_out_controllers.iter() {
         write_midi_controller_config(&mut xml_writer, controller)?;
     }
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"out_controllers")))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"midi_out_controllers")))?;
 
     // End
 
-    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"midi_config")))?;
+    xml_writer.write_event(Event::End(BytesEnd::borrowed(b"config")))?;
 
     let xml_result = xml_writer.into_inner().into_inner();
 
@@ -480,12 +449,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn write_and_load_audio_config() {
-        let audio_config = AudioConfig {
-            server: String::from("Jack"),
-            system_device: String::from("Jack Server"),
+    fn write_and_load_config() {
+        let config = Config {
+            audio_server: String::from("Jack"),
+            system_audio_device: String::from("Jack Server"),
 
-            in_busses: vec![
+            audio_in_busses: vec![
                 AudioBusConfig {
                     id: String::from("Mic #1"),
                     system_ports: vec![String::from("system:capture_1")],
@@ -496,7 +465,7 @@ mod tests {
                 },
             ],
 
-            out_busses: vec![
+            audio_out_busses: vec![
                 AudioBusConfig {
                     id: String::from("Speaker #1"),
                     system_ports: vec![
@@ -513,23 +482,9 @@ mod tests {
                 },
             ],
 
-            sample_rate: Some(44100),
-            buffer_size: None,
-        };
+            midi_server: Some(String::from("Jack")),
 
-        write_audio_config_to_file("test_audio_config.xml", &audio_config).unwrap();
-
-        let read_config = load_audio_config_from_file("test_audio_config.xml").unwrap();
-
-        assert_eq!(audio_config, read_config);
-    }
-
-    #[test]
-    fn write_and_load_midi_config() {
-        let midi_config = MidiConfig {
-            server: String::from("Jack"),
-
-            in_controllers: vec![
+            midi_in_controllers: vec![
                 MidiControllerConfig {
                     id: String::from("Midi In #1"),
                     system_port: String::from("system:midi_capture_1"),
@@ -540,7 +495,7 @@ mod tests {
                 },
             ],
 
-            out_controllers: vec![
+            midi_out_controllers: vec![
                 MidiControllerConfig {
                     id: String::from("Midi Out #1"),
                     system_port: String::from("system:midi_playback_1"),
@@ -550,12 +505,15 @@ mod tests {
                     system_port: String::from("system:midi_playback_2"),
                 },
             ],
+
+            sample_rate: Some(44100),
+            buffer_size: None,
         };
 
-        write_midi_config_to_file("test_midi_config.xml", &midi_config).unwrap();
+        write_config_to_file("test_config.xml", &config).unwrap();
 
-        let read_config = load_midi_config_from_file("test_midi_config.xml").unwrap();
+        let read_config = load_config_from_file("test_config.xml").unwrap();
 
-        assert_eq!(midi_config, read_config);
+        assert_eq!(config, read_config);
     }
 }

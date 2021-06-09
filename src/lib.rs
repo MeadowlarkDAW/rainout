@@ -10,7 +10,6 @@ use windows::{WindowsDevicesInfo, WindowsStreamHandle};
 
 pub mod audio_buffer;
 pub mod config;
-pub mod config_helper;
 pub mod error;
 pub mod midi_buffer;
 pub mod stream_info;
@@ -18,7 +17,6 @@ pub mod system_info;
 
 pub use audio_buffer::*;
 pub use config::*;
-pub use config_helper::*;
 pub use error::*;
 pub use midi_buffer::*;
 pub use stream_info::*;
@@ -95,11 +93,11 @@ impl DevicesInfo {
         self.os_info.midi_servers_info()
     }
 
-    pub fn estimated_latency(&self, audio_config: &AudioConfig) -> Option<u32> {
-        self.os_info.estimated_latency(audio_config)
+    pub fn estimated_latency(&self, config: &Config) -> Option<u32> {
+        self.os_info.estimated_latency(config)
     }
-    pub fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32> {
-        self.os_info.sample_rate(audio_config)
+    pub fn sample_rate(&self, config: &Config) -> Option<u32> {
+        self.os_info.sample_rate(config)
     }
 }
 
@@ -120,25 +118,23 @@ trait OsDevicesInfo {
     fn default_audio_server(&self) -> String;
     fn default_midi_config(&self) -> String;
 
-    fn estimated_latency(&self, audio_config: &AudioConfig) -> Option<u32>;
-    fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32>;
+    fn estimated_latency(&self, config: &Config) -> Option<u32>;
+    fn sample_rate(&self, config: &Config) -> Option<u32>;
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
-    audio_config: &AudioConfig,
-    midi_config: Option<&MidiConfig>,
+    config: &Config,
     use_client_name: Option<String>,
     rt_process_handler: P,
     fatal_error_hanlder: E,
 ) -> Result<StreamHandle<P, E>, SpawnRtThreadError> {
-    check_duplicate_ids(audio_config, midi_config)?;
+    check_duplicate_ids(config)?;
 
     #[cfg(target_os = "linux")]
     {
         Ok(StreamHandle {
             os_handle: linux::spawn_rt_thread(
-                audio_config,
-                midi_config,
+                config,
                 use_client_name,
                 rt_process_handler,
                 fatal_error_hanlder,
@@ -150,8 +146,7 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     {
         Ok(StreamHandle {
             os_handle: windows::spawn_rt_thread(
-                audio_config,
-                midi_config,
+                config,
                 use_client_name,
                 rt_process_handler,
                 fatal_error_hanlder,
@@ -160,33 +155,28 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     }
 }
 
-fn check_duplicate_ids(
-    audio_config: &AudioConfig,
-    midi_config: Option<&MidiConfig>,
-) -> Result<(), SpawnRtThreadError> {
+fn check_duplicate_ids(config: &Config) -> Result<(), SpawnRtThreadError> {
     let mut ids = std::collections::HashSet::new();
 
-    for in_bus in audio_config.in_busses.iter() {
+    for in_bus in config.audio_in_busses.iter() {
         if !ids.insert(in_bus.id.clone()) {
             return Err(SpawnRtThreadError::IdNotUnique(in_bus.id.clone()));
         }
     }
-    for out_bus in audio_config.out_busses.iter() {
+    for out_bus in config.audio_out_busses.iter() {
         if !ids.insert(out_bus.id.clone()) {
             return Err(SpawnRtThreadError::IdNotUnique(out_bus.id.clone()));
         }
     }
 
-    if let Some(midi_config) = midi_config {
-        for in_controller in midi_config.in_controllers.iter() {
-            if !ids.insert(in_controller.id.clone()) {
-                return Err(SpawnRtThreadError::IdNotUnique(in_controller.id.clone()));
-            }
+    for in_controller in config.midi_in_controllers.iter() {
+        if !ids.insert(in_controller.id.clone()) {
+            return Err(SpawnRtThreadError::IdNotUnique(in_controller.id.clone()));
         }
-        for out_controller in midi_config.out_controllers.iter() {
-            if !ids.insert(out_controller.id.clone()) {
-                return Err(SpawnRtThreadError::IdNotUnique(out_controller.id.clone()));
-            }
+    }
+    for out_controller in config.midi_out_controllers.iter() {
+        if !ids.insert(out_controller.id.clone()) {
+            return Err(SpawnRtThreadError::IdNotUnique(out_controller.id.clone()));
         }
     }
 

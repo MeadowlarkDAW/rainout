@@ -1,7 +1,6 @@
 use super::{
-    AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo, FatalErrorHandler,
-    MidiConfig, MidiServerInfo, OsDevicesInfo, OsStreamHandle, RtProcessHandler,
-    SpawnRtThreadError, StreamInfo,
+    AudioServerDevices, AudioServerInfo, BufferSizeInfo, Config, FatalErrorHandler, MidiServerInfo,
+    OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamInfo,
 };
 
 mod jack_backend;
@@ -77,8 +76,8 @@ impl OsDevicesInfo for LinuxDevicesInfo {
         }
     }
 
-    fn estimated_latency(&self, audio_config: &AudioConfig) -> Option<u32> {
-        match audio_config.server.as_str() {
+    fn estimated_latency(&self, config: &Config) -> Option<u32> {
+        match config.audio_server.as_str() {
             "Jack" => {
                 if self.audio_servers_info[0].available {
                     // First server is Jack.
@@ -99,8 +98,8 @@ impl OsDevicesInfo for LinuxDevicesInfo {
         None
     }
 
-    fn sample_rate(&self, audio_config: &AudioConfig) -> Option<u32> {
-        match audio_config.server.as_str() {
+    fn sample_rate(&self, config: &Config) -> Option<u32> {
+        match config.audio_server.as_str() {
             "Jack" => {
                 if self.audio_servers_info[0].available {
                     // First server is Jack.
@@ -121,38 +120,15 @@ impl OsDevicesInfo for LinuxDevicesInfo {
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
-    audio_config: &AudioConfig,
-    midi_config: Option<&MidiConfig>,
+    config: &Config,
     use_client_name: Option<String>,
     rt_process_handler: P,
     fatal_error_handler: E,
 ) -> Result<LinuxStreamHandle<P, E>, SpawnRtThreadError> {
-    let midi_server_name = midi_config.map(|m| m.server.as_str()).unwrap_or("");
-
-    match audio_config.server.as_str() {
+    match config.audio_server.as_str() {
         "Jack" => {
-            if let Some(midi_config) = midi_config {
-                if midi_server_name == "Jack" {
-                    let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
-                        audio_config,
-                        &midi_config.in_controllers,
-                        &midi_config.out_controllers,
-                        rt_process_handler,
-                        fatal_error_handler,
-                        use_client_name,
-                    )?;
-
-                    return Ok(LinuxStreamHandle {
-                        stream_info,
-                        _jack_server_handle: Some(jack_server_handle),
-                    });
-                }
-            }
-
             let (stream_info, jack_server_handle) = jack_backend::spawn_rt_thread(
-                audio_config,
-                &[],
-                &[],
+                config,
                 rt_process_handler,
                 fatal_error_handler,
                 use_client_name,

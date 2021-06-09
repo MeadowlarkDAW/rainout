@@ -1,10 +1,10 @@
 use log::{debug, info, warn};
 
 use crate::{
-    AudioBus, AudioBusBuffer, AudioConfig, AudioServerDevices, AudioServerInfo, BufferSizeInfo,
+    AudioBus, AudioBusBuffer, AudioServerDevices, AudioServerInfo, BufferSizeInfo, Config,
     DeviceIndex, FatalErrorHandler, FatalStreamError, MidiController, MidiControllerBuffer,
-    MidiControllerConfig, MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler,
-    SpawnRtThreadError, StreamInfo, SystemDeviceInfo,
+    MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamInfo,
+    SystemDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
@@ -95,9 +95,7 @@ pub struct JackRtThreadHandle<P: RtProcessHandler, E: FatalErrorHandler> {
 }
 
 pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
-    audio_config: &AudioConfig,
-    create_midi_in_controllers: &[MidiControllerConfig],
-    create_midi_out_controllers: &[MidiControllerConfig],
+    config: &Config,
     mut rt_process_handler: P,
     fatal_error_handler: E,
     use_client_name: Option<String>,
@@ -129,7 +127,7 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     let mut audio_in_port_names = Vec::<String>::new();
     let mut audio_in_connected_port_names = Vec::<String>::new();
     let mut audio_in_busses = Vec::<AudioBus>::new();
-    for (bus_i, bus) in audio_config.in_busses.iter().enumerate() {
+    for (bus_i, bus) in config.audio_in_busses.iter().enumerate() {
         if bus.system_ports.len() == 0 {
             return Err(SpawnRtThreadError::NoSystemPortsGiven(bus.id.clone()));
         }
@@ -164,7 +162,7 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     let mut audio_out_port_names = Vec::<String>::new();
     let mut audio_out_connected_port_names = Vec::<String>::new();
     let mut audio_out_busses = Vec::<AudioBus>::new();
-    for (bus_i, bus) in audio_config.out_busses.iter().enumerate() {
+    for (bus_i, bus) in config.audio_out_busses.iter().enumerate() {
         if bus.system_ports.len() == 0 {
             return Err(SpawnRtThreadError::NoSystemPortsGiven(bus.id.clone()));
         }
@@ -199,40 +197,46 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
     let mut midi_in_port_names = Vec::<String>::new();
     let mut midi_in_connected_port_names = Vec::<String>::new();
     let mut midi_in_controllers = Vec::<MidiController>::new();
-    for (controller_i, controller) in create_midi_in_controllers.iter().enumerate() {
-        let system_port_name = &controller.system_port;
-
-        midi_in_controllers.push(MidiController {
-            id_name: controller.id.clone(),
-            id_index: DeviceIndex::new(controller_i),
-            system_port: String::from(system_port_name),
-        });
-
-        let port = client.register_port(&controller.id, jack::MidiIn::default())?;
-
-        midi_in_port_names.push(port.name()?);
-        midi_in_connected_port_names.push(String::from(system_port_name));
-        midi_in_ports.push(port);
-    }
 
     let mut midi_out_ports = Vec::<jack::Port<jack::MidiOut>>::new();
     let mut midi_out_port_names = Vec::<String>::new();
     let mut midi_out_connected_port_names = Vec::<String>::new();
     let mut midi_out_controllers = Vec::<MidiController>::new();
-    for (controller_i, controller) in create_midi_out_controllers.iter().enumerate() {
-        let system_port_name = &controller.system_port;
 
-        midi_out_controllers.push(MidiController {
-            id_name: controller.id.clone(),
-            id_index: DeviceIndex::new(controller_i),
-            system_port: String::from(system_port_name),
-        });
+    if let Some(midi_server) = &config.midi_server {
+        if midi_server == "Jack" {
+            for (controller_i, controller) in config.midi_in_controllers.iter().enumerate() {
+                let system_port_name = &controller.system_port;
 
-        let port = client.register_port(&controller.id, jack::MidiOut::default())?;
+                midi_in_controllers.push(MidiController {
+                    id_name: controller.id.clone(),
+                    id_index: DeviceIndex::new(controller_i),
+                    system_port: String::from(system_port_name),
+                });
 
-        midi_out_port_names.push(port.name()?);
-        midi_out_connected_port_names.push(String::from(system_port_name));
-        midi_out_ports.push(port);
+                let port = client.register_port(&controller.id, jack::MidiIn::default())?;
+
+                midi_in_port_names.push(port.name()?);
+                midi_in_connected_port_names.push(String::from(system_port_name));
+                midi_in_ports.push(port);
+            }
+
+            for (controller_i, controller) in config.midi_out_controllers.iter().enumerate() {
+                let system_port_name = &controller.system_port;
+
+                midi_out_controllers.push(MidiController {
+                    id_name: controller.id.clone(),
+                    id_index: DeviceIndex::new(controller_i),
+                    system_port: String::from(system_port_name),
+                });
+
+                let port = client.register_port(&controller.id, jack::MidiOut::default())?;
+
+                midi_out_port_names.push(port.name()?);
+                midi_out_connected_port_names.push(String::from(system_port_name));
+                midi_out_ports.push(port);
+            }
+        }
     }
 
     let sample_rate = client.sample_rate() as u32;

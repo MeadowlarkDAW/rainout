@@ -41,7 +41,7 @@ impl FatalErrorHandler for MyFatalErrorHandler {
 }
 
 pub struct DemoApp {
-    config_feedback: DeviceIOHelper,
+    config_helper: DeviceIOHelper,
     settings_tab: SettingsTab,
 
     status_msg: String,
@@ -60,7 +60,7 @@ impl epi::App for DemoApp {
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         let Self {
-            config_feedback,
+            config_helper,
             settings_tab,
             status_msg,
             status_msg_open,
@@ -69,7 +69,7 @@ impl epi::App for DemoApp {
             error_signal_rx,
         } = self;
 
-        let (config_state, config_feedback, messages) = config_feedback.update();
+        let (config_state, config_feedback, messages) = config_helper.update();
 
         if let Some(messages) = &messages {
             status_msg.clear();
@@ -85,11 +85,14 @@ impl epi::App for DemoApp {
                 // Fatal stream error occurred. Stop the stream and refresh servers.
                 eprintln!("Fatal stream error: {}", error);
 
-                *audio_engine_running = false;
-                *stream_handle = None; // Settings this to `None` will cause the stream to cleanup and shutdown.
+                // Alert the helper of the crash so it can try and recover the config from file later.
+                config_state.audio_engine_just_crashed = true;
 
                 config_state.do_refresh_audio_servers = true;
                 config_state.do_refresh_midi_servers = true;
+
+                *audio_engine_running = false;
+                *stream_handle = None; // Settings this to `None` will cause the stream to cleanup and shutdown.
 
                 // Show the status message to the user as a pop-up window.
                 *status_msg = format!("Fatal stream error occurred: {}", error);
@@ -138,6 +141,9 @@ impl epi::App for DemoApp {
                                 Ok(handle) => {
                                     *stream_handle = Some(handle);
                                     *audio_engine_running = true;
+
+                                    // Alert the helper that we started the stream so it can save the config to file.
+                                    config_state.audio_engine_just_started = true;
                                 }
                                 Err(e) => {
                                     *status_msg = format!("Could not start audio engine: {}", e);
@@ -201,7 +207,7 @@ impl epi::App for DemoApp {
 impl DemoApp {
     pub fn new() -> Self {
         Self {
-            config_feedback: Default::default(),
+            config_helper: DeviceIOHelper::new("test_audio_config.xml", "test_midi_config.xml"),
             settings_tab: SettingsTab::Audio,
             status_msg: String::new(),
             status_msg_open: false,

@@ -1,6 +1,6 @@
 use rusty_daw_io::{
-    AudioBusConfig, AudioConfig, DevicesInfo, FatalErrorHandler, FatalStreamError, MidiConfig,
-    MidiControllerConfig, ProcessInfo, RtProcessHandler, StreamInfo,
+    AudioBusConfig, Config, DevicesInfo, FatalErrorHandler, FatalStreamError, MidiControllerConfig,
+    ProcessInfo, RtProcessHandler, StreamInfo,
 };
 
 fn main() {
@@ -11,18 +11,18 @@ fn main() {
     dbg!(info.audio_servers_info());
     dbg!(info.midi_servers_info());
 
-    let audio_config = AudioConfig {
-        server: String::from("Jack"),
-        system_device: String::from("Jack"),
+    let config = Config {
+        audio_server: String::from("Jack"),
+        system_audio_device: String::from("Jack"),
 
-        in_busses: vec![AudioBusConfig {
+        audio_in_busses: vec![AudioBusConfig {
             id: String::from("audio_in"),
             system_ports: vec![
                 String::from("system:capture_1"),
                 String::from("system:capture_2"),
             ],
         }],
-        out_busses: vec![AudioBusConfig {
+        audio_out_busses: vec![AudioBusConfig {
             id: String::from("audio_out"),
             system_ports: vec![
                 String::from("system:playback_1"),
@@ -32,23 +32,22 @@ fn main() {
 
         sample_rate: None,
         buffer_size: None,
-    };
 
-    let midi_config = MidiConfig {
-        server: String::from("Jack"),
-        in_controllers: vec![MidiControllerConfig {
+        midi_server: Some(String::from("Jack")),
+
+        midi_in_controllers: vec![MidiControllerConfig {
             id: String::from("midi_in"),
             system_port: String::from("system:midi_capture_2"),
         }],
-        out_controllers: vec![MidiControllerConfig {
+
+        midi_out_controllers: vec![MidiControllerConfig {
             id: String::from("midi_out"),
             system_port: String::from("system:midi_playback_1"),
         }],
     };
 
     let stream_handle = rusty_daw_io::spawn_rt_thread(
-        &audio_config,
-        Some(&midi_config),
+        &config,
         Some(String::from("testing")),
         MyRtProcessHandler {},
         MyFatalErrorHandler {},
