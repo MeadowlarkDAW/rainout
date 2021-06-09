@@ -1,5 +1,3 @@
-use crate::BufferSizeInfo;
-
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct DeviceIndex(usize);
 
@@ -71,5 +69,5 @@ pub struct StreamInfo {
     pub midi_in: Vec<MidiController>,
     pub midi_out: Vec<MidiController>,
     pub sample_rate: u32,
-    pub audio_buffer_size: BufferSizeInfo,
+    pub max_audio_buffer_size: u32,
 }

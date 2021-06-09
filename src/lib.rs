@@ -13,14 +13,14 @@ pub mod config;
 pub mod error;
 pub mod midi_buffer;
 pub mod stream_info;
-pub mod system_info;
+pub mod system_options;
 
 pub use audio_buffer::*;
 pub use config::*;
 pub use error::*;
 pub use midi_buffer::*;
 pub use stream_info::*;
-pub use system_info::*;
+pub use system_options::*;
 
 #[cfg(feature = "save-file")]
 pub mod save_file;
