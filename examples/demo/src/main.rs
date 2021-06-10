@@ -3,8 +3,8 @@ use egui::ScrollArea;
 use ringbuf::{Consumer, Producer, RingBuffer};
 
 use rusty_daw_io::{
-    BufferSizeOptions, DeviceIOHelper, DeviceIOHelperFeedback, DeviceIOHelperState,
     FatalErrorHandler, FatalStreamError, ProcessInfo, RtProcessHandler, StreamHandle, StreamInfo,
+    SystemOptions,
 };
 
 static SPACING: f32 = 30.0;
@@ -41,16 +41,17 @@ impl FatalErrorHandler for MyFatalErrorHandler {
 }
 
 pub struct DemoApp {
-    config_helper: DeviceIOHelper,
+    system_opts: SystemOptions,
     settings_tab: SettingsTab,
 
     status_msg: String,
     status_msg_open: bool,
-
+    /*
     audio_engine_running: bool,
 
     stream_handle: Option<StreamHandle<MyRtProcessHandler, MyFatalErrorHandler>>,
     error_signal_rx: Option<Consumer<FatalStreamError>>,
+    */
 }
 
 impl epi::App for DemoApp {
@@ -59,19 +60,8 @@ impl epi::App for DemoApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
-        let Self {
-            config_helper,
-            settings_tab,
-            status_msg,
-            status_msg_open,
-            audio_engine_running,
-            stream_handle,
-            error_signal_rx,
-        } = self;
-
-        let (config_state, config_feedback, messages) = config_helper.update();
-
-        if let Some(messages) = &messages {
+        /*
+        if let Some(messages) = &self.messages {
             status_msg.clear();
             for message in messages.iter() {
                 status_msg.push_str(message.as_str());
@@ -104,7 +94,9 @@ impl epi::App for DemoApp {
                 *error_signal_rx = Some(error_rx);
             }
         }
+        */
 
+        /*
         egui::TopPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.set_min_height(60.0);
@@ -159,39 +151,29 @@ impl epi::App for DemoApp {
                 }
             });
         });
+        */
 
         egui::SidePanel::left("side_panel", 200.0).show(ctx, |ui| {
             ui.heading("Settings");
 
             ui.separator();
             ui.vertical_centered_justified(|ui| {
-                ui.selectable_value(settings_tab, SettingsTab::Audio, "Audio");
-                ui.selectable_value(settings_tab, SettingsTab::Midi, "Midi");
+                ui.selectable_value(&mut self.settings_tab, SettingsTab::Audio, "Audio");
+                ui.selectable_value(&mut self.settings_tab, SettingsTab::Midi, "Midi");
             });
         });
 
-        let settings_tab = *settings_tab;
+        let settings_tab = self.settings_tab;
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_enabled(!*audio_engine_running);
+            //ui.set_enabled(!*audio_engine_running);
 
             match settings_tab {
-                SettingsTab::Audio => audio_settings(
-                    ui,
-                    config_state,
-                    config_feedback,
-                    status_msg,
-                    status_msg_open,
-                ),
-                SettingsTab::Midi => midi_settings(
-                    ui,
-                    config_state,
-                    config_feedback,
-                    status_msg,
-                    status_msg_open,
-                ),
+                SettingsTab::Audio => self.audio_settings(ui),
+                SettingsTab::Midi => (),
             }
         });
 
+        /*
         if *status_msg_open {
             egui::Window::new("Status").show(ctx, |ui| {
                 ui.label(status_msg.as_str());
@@ -201,327 +183,353 @@ impl epi::App for DemoApp {
                 }
             });
         }
+        */
     }
 }
 
 impl DemoApp {
     pub fn new() -> Self {
         Self {
-            config_helper: DeviceIOHelper::new("test_audio_config.xml", "test_midi_config.xml"),
+            system_opts: SystemOptions::new(),
             settings_tab: SettingsTab::Audio,
             status_msg: String::new(),
             status_msg_open: false,
-            audio_engine_running: false,
-            stream_handle: None,
-            error_signal_rx: None,
         }
     }
-}
 
-fn audio_settings(
-    ui: &mut egui::Ui,
-    config_state: &mut DeviceIOHelperState,
-    config_feedback: &DeviceIOHelperFeedback,
-    status_msg: &mut String,
-    status_msg_open: &mut bool,
-) {
-    ui.horizontal(|ui| {
-        use rusty_daw_io::save_file::{load_audio_config_from_file, write_audio_config_to_file};
+    fn audio_settings(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Audio Devices");
 
-        ui.heading("Audio Devices");
+            if ui.button("Refresh").clicked() {}
 
-        if ui.button("Refresh").clicked() {
-            config_state.do_refresh_audio_servers = true;
-        }
+            // Can't figure out how to right-align elements in egui. Use spacing as a hacky
+            // way to mimic this.
+            ui.add_space(150.0);
+        });
 
-        // Can't figure out how to right-align elements in egui. Use spacing as a hacky
-        // way to mimic this.
-        ui.add_space(150.0);
+        ui.separator();
 
-        if let Some(audio_config) = config_feedback.audio_config() {
-            if ui.button("Save Audio Config").clicked() {
-                // Just using the root directory and a default filename, but you can use the system's
-                // file dialog instead.
-                match write_audio_config_to_file("test_audio_config.xml", audio_config) {
-                    Ok(()) => {
-                        *status_msg =
-                            String::from("Successfully saved config to \"test_audio_config.xml\"");
-                        println!("{}", status_msg);
-                    }
-                    Err(e) => {
-                        *status_msg = format!("Error saving config: {}", e);
-                        eprintln!("{}", status_msg);
-                    }
-                }
+        ScrollArea::auto_sized().show(ui, |ui| {
+            ui.add_space(SPACING / 2.0);
 
-                // Show the status message to the user as a pop-up window.
-                *status_msg_open = true;
+            // Audio server (driver model)
+
+            ui.heading("System Device");
+
+            ui.separator();
+        });
+
+        /*
+        ui.horizontal(|ui| {
+            use rusty_daw_io::save_file::{
+                load_audio_config_from_file, write_audio_config_to_file,
+            };
+
+            ui.heading("Audio Devices");
+
+            if ui.button("Refresh").clicked() {
+                config_state.do_refresh_audio_servers = true;
             }
-        } else {
-            ui.add(egui::Button::new("Save Audio Config").enabled(false));
-        }
 
-        if ui.button("Load Audio Config").clicked() {
-            // Just using the root directory and a default filename, but you can use the system's
-            // file dialog instead.
-            match load_audio_config_from_file("test_audio_config.xml") {
-                Ok(new_config) => {
-                    config_state.do_load_audio_config = Some(new_config);
-                }
-                Err(e) => {
-                    *status_msg = format!("Error loading config: {}", e);
-                    eprintln!("{}", status_msg);
+            // Can't figure out how to right-align elements in egui. Use spacing as a hacky
+            // way to mimic this.
+            ui.add_space(150.0);
+
+            if let Some(audio_config) = config_feedback.audio_config() {
+                if ui.button("Save Audio Config").clicked() {
+                    // Just using the root directory and a default filename, but you can use the system's
+                    // file dialog instead.
+                    match write_audio_config_to_file("test_audio_config.xml", audio_config) {
+                        Ok(()) => {
+                            *status_msg = String::from(
+                                "Successfully saved config to \"test_audio_config.xml\"",
+                            );
+                            println!("{}", status_msg);
+                        }
+                        Err(e) => {
+                            *status_msg = format!("Error saving config: {}", e);
+                            eprintln!("{}", status_msg);
+                        }
+                    }
 
                     // Show the status message to the user as a pop-up window.
                     *status_msg_open = true;
                 }
+            } else {
+                ui.add(egui::Button::new("Save Audio Config").enabled(false));
             }
-        }
-    });
 
-    ui.separator();
-
-    ScrollArea::auto_sized().show(ui, |ui| {
-        ui.add_space(SPACING / 2.0);
-
-        // Audio server (driver model)
-
-        ui.heading("System Device");
-
-        ui.separator();
-
-        egui::ComboBox::from_label("Driver Model")
-            .selected_text(&config_feedback.audio_server_options()[config_state.audio_server_index])
-            .show_ui(ui, |ui| {
-                for (i, option) in config_feedback.audio_server_options().iter().enumerate() {
-                    ui.selectable_value(&mut config_state.audio_server_index, i, option);
-                }
-            });
-
-        ui.separator();
-
-        // Audio device
-
-        if let Some(audio_device_options) = config_feedback.audio_device_options() {
-            egui::ComboBox::from_label("Device")
-                .selected_text(&audio_device_options[config_state.audio_device_index])
-                .show_ui(ui, |ui| {
-                    for (i, option) in audio_device_options.iter().enumerate() {
-                        ui.selectable_value(&mut config_state.audio_device_index, i, option);
+            if ui.button("Load Audio Config").clicked() {
+                // Just using the root directory and a default filename, but you can use the system's
+                // file dialog instead.
+                match load_audio_config_from_file("test_audio_config.xml") {
+                    Ok(new_config) => {
+                        config_state.do_load_audio_config = Some(new_config);
                     }
-                });
+                    Err(e) => {
+                        *status_msg = format!("Error loading config: {}", e);
+                        eprintln!("{}", status_msg);
 
-            if config_feedback.audio_device_playback_only() {
-                ui.label("(Playback only)");
-            }
-        }
-
-        // Sample rate
-
-        if let Some(sample_rate_options) = config_feedback.sample_rate_options() {
-            egui::ComboBox::from_label("Sample Rate")
-                .selected_text(&sample_rate_options[config_state.sample_rate_index])
-                .show_ui(ui, |ui| {
-                    for (i, option) in sample_rate_options.iter().enumerate() {
-                        ui.selectable_value(&mut config_state.sample_rate_index, i, option);
+                        // Show the status message to the user as a pop-up window.
+                        *status_msg_open = true;
                     }
-                });
-        }
-
-        // Buffer Size
-
-        if let Some(buffer_size_options) = config_feedback.buffer_size_options() {
-            match buffer_size_options {
-                BufferSizeOptions::UnknownSize => {
-                    ui.label("Unkown buffer size");
-                }
-                BufferSizeOptions::Constant { auto_value } => {
-                    ui.label(format!("Buffer Size: {}", *auto_value));
-                }
-                BufferSizeOptions::Range {
-                    auto_value,
-                    min,
-                    max,
-                    ..
-                } => {
-                    ui.horizontal(|ui| {
-                        if ui.button("Auto").clicked() {
-                            config_state.buffer_size = *auto_value;
-                        }
-
-                        ui.add(egui::Slider::new(
-                            &mut config_state.buffer_size,
-                            *min..=*max,
-                        ));
-
-                        ui.label("Buffer Size");
-                    });
                 }
             }
-        }
+        });
 
         ui.separator();
 
-        // Current Info
+        ScrollArea::auto_sized().show(ui, |ui| {
+            ui.add_space(SPACING / 2.0);
 
-        if let Some(info) = config_feedback.audio_config_info() {
-            ui.label(format!("Using sample rate: {}", info.sample_rate));
-            ui.label(format!(
-                "Estimated latency: {} frames ({:.1} ms)",
-                info.estimated_latency, info.estimated_latency_ms,
-            ));
-        }
+            // Audio server (driver model)
 
-        // Error States
-
-        if config_feedback.audio_device_not_selected() {
-            ui.label("Cannot start audio engine. No device is selected.");
-        }
-
-        if config_feedback.audio_server_unavailable() {
-            ui.label(format!(
-                "Cannot start audio engine. {} audio server is unavailable",
-                config_feedback.audio_server_options()[config_state.audio_server_index]
-            ));
-        }
-
-        ui.add_space(SPACING);
-
-        // User Audio Output Busses
-
-        if let Some(available_ports) = config_feedback.audio_out_port_options() {
-            ui.heading("Output Busses");
+            ui.heading("System Device");
 
             ui.separator();
 
-            let num_out_busses = config_state.audio_out_busses.len();
+            egui::ComboBox::from_label("Driver Model")
+                .selected_text(
+                    &config_feedback.audio_server_options()[config_state.audio_server_index],
+                )
+                .show_ui(ui, |ui| {
+                    for (i, option) in config_feedback.audio_server_options().iter().enumerate() {
+                        ui.selectable_value(&mut config_state.audio_server_index, i, option);
+                    }
+                });
 
-            for (bus_i, bus_state) in config_state.audio_out_busses.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut bus_state.id).hint_text("Enter Name"));
-                    ui.label("Name");
+            ui.separator();
 
-                    // Don't allow user to delete the only output bus.
-                    if num_out_busses > 1 {
+            // Audio device
+
+            if let Some(audio_device_options) = config_feedback.audio_device_options() {
+                egui::ComboBox::from_label("Device")
+                    .selected_text(&audio_device_options[config_state.audio_device_index])
+                    .show_ui(ui, |ui| {
+                        for (i, option) in audio_device_options.iter().enumerate() {
+                            ui.selectable_value(&mut config_state.audio_device_index, i, option);
+                        }
+                    });
+
+                if config_feedback.audio_device_playback_only() {
+                    ui.label("(Playback only)");
+                }
+            }
+
+            // Sample rate
+
+            if let Some(sample_rate_options) = config_feedback.sample_rate_options() {
+                egui::ComboBox::from_label("Sample Rate")
+                    .selected_text(&sample_rate_options[config_state.sample_rate_index])
+                    .show_ui(ui, |ui| {
+                        for (i, option) in sample_rate_options.iter().enumerate() {
+                            ui.selectable_value(&mut config_state.sample_rate_index, i, option);
+                        }
+                    });
+            }
+
+            // Buffer Size
+
+            if let Some(buffer_size_options) = config_feedback.buffer_size_options() {
+                match buffer_size_options {
+                    BufferSizeOptions::UnknownSize => {
+                        ui.label("Unkown buffer size");
+                    }
+                    BufferSizeOptions::Constant { auto_value } => {
+                        ui.label(format!("Buffer Size: {}", *auto_value));
+                    }
+                    BufferSizeOptions::Range {
+                        auto_value,
+                        min,
+                        max,
+                        ..
+                    } => {
+                        ui.horizontal(|ui| {
+                            if ui.button("Auto").clicked() {
+                                config_state.buffer_size = *auto_value;
+                            }
+
+                            ui.add(egui::Slider::new(
+                                &mut config_state.buffer_size,
+                                *min..=*max,
+                            ));
+
+                            ui.label("Buffer Size");
+                        });
+                    }
+                }
+            }
+
+            ui.separator();
+
+            // Current Info
+
+            if let Some(info) = config_feedback.audio_config_info() {
+                ui.label(format!("Using sample rate: {}", info.sample_rate));
+                ui.label(format!(
+                    "Estimated latency: {} frames ({:.1} ms)",
+                    info.estimated_latency, info.estimated_latency_ms,
+                ));
+            }
+
+            // Error States
+
+            if config_feedback.audio_device_not_selected() {
+                ui.label("Cannot start audio engine. No device is selected.");
+            }
+
+            if config_feedback.audio_server_unavailable() {
+                ui.label(format!(
+                    "Cannot start audio engine. {} audio server is unavailable",
+                    config_feedback.audio_server_options()[config_state.audio_server_index]
+                ));
+            }
+
+            ui.add_space(SPACING);
+
+            // User Audio Output Busses
+
+            if let Some(available_ports) = config_feedback.audio_out_port_options() {
+                ui.heading("Output Busses");
+
+                ui.separator();
+
+                let num_out_busses = config_state.audio_out_busses.len();
+
+                for (bus_i, bus_state) in config_state.audio_out_busses.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut bus_state.id).hint_text("Enter Name"),
+                        );
+                        ui.label("Name");
+
+                        // Don't allow user to delete the only output bus.
+                        if num_out_busses > 1 {
+                            if ui.button("Remove").clicked() {
+                                // Mark the device for deletion.
+                                bus_state.do_delete = true;
+                            }
+                        }
+                    });
+
+                    let num_system_ports = bus_state.system_ports.len();
+
+                    for (port_i, port_state) in bus_state.system_ports.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            // egui requires a unique id for each combo box
+                            let cb_id = format!("user_audio_out_bus_{}_{}", bus_i, port_i);
+
+                            egui::ComboBox::from_id_source(cb_id)
+                                .selected_text(&port_state)
+                                .show_ui(ui, |ui| {
+                                    for available_port in available_ports.iter() {
+                                        ui.selectable_value(
+                                            port_state,
+                                            available_port.clone(),
+                                            available_port,
+                                        );
+                                    }
+                                });
+
+                            // Don't allow user to delete the only port.
+                            if num_system_ports > 1 {
+                                if ui.small_button("x").clicked() {
+                                    // You may rename a port to "" to automatically delete the port.
+                                    *port_state = String::from("");
+                                }
+                            }
+                        });
+                    }
+
+                    if ui.button("Add Port").clicked() {
+                        bus_state.system_ports.push(available_ports[0].clone());
+                    }
+
+                    ui.separator();
+                }
+
+                if ui.button("Add Output Bus").clicked() {
+                    if let Some(new_bus) = config_feedback.new_audio_out_bus() {
+                        config_state.audio_out_busses.push(new_bus);
+                    }
+                }
+
+                ui.separator();
+            }
+
+            ui.add_space(SPACING);
+
+            // User Audio Input Busses
+
+            if let Some(available_ports) = config_feedback.audio_in_port_options() {
+                ui.heading("Input Busses");
+
+                ui.separator();
+
+                for (bus_i, bus_state) in config_state.audio_in_busses.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut bus_state.id).hint_text("Enter Name"),
+                        );
+                        ui.label("Name");
+
                         if ui.button("Remove").clicked() {
-                            // Mark the device for deletion.
+                            // Mark the bus for deletion.
                             bus_state.do_delete = true;
                         }
-                    }
-                });
-
-                let num_system_ports = bus_state.system_ports.len();
-
-                for (port_i, port_state) in bus_state.system_ports.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        // egui requires a unique id for each combo box
-                        let cb_id = format!("user_audio_out_bus_{}_{}", bus_i, port_i);
-
-                        egui::ComboBox::from_id_source(cb_id)
-                            .selected_text(&port_state)
-                            .show_ui(ui, |ui| {
-                                for available_port in available_ports.iter() {
-                                    ui.selectable_value(
-                                        port_state,
-                                        available_port.clone(),
-                                        available_port,
-                                    );
-                                }
-                            });
-
-                        // Don't allow user to delete the only port.
-                        if num_system_ports > 1 {
-                            if ui.small_button("x").clicked() {
-                                // You may rename a port to "" to automatically delete the port.
-                                *port_state = String::from("");
-                            }
-                        }
                     });
+
+                    let num_system_ports = bus_state.system_ports.len();
+
+                    for (port_i, port_state) in bus_state.system_ports.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            // egui requires a unique id for each combo box
+                            let cb_id = format!("user_audio_in_bus_{}_{}", bus_i, port_i);
+
+                            egui::ComboBox::from_id_source(cb_id)
+                                .selected_text(&port_state)
+                                .show_ui(ui, |ui| {
+                                    for available_port in available_ports.iter() {
+                                        ui.selectable_value(
+                                            port_state,
+                                            available_port.clone(),
+                                            available_port,
+                                        );
+                                    }
+                                });
+
+                            // Don't allow user to delete the only port.
+                            if num_system_ports > 1 {
+                                if ui.small_button("x").clicked() {
+                                    // You may rename a port to "" to automatically delete the port.
+                                    *port_state = String::from("");
+                                }
+                            }
+                        });
+                    }
+
+                    if ui.button("Add Port").clicked() {
+                        bus_state.system_ports.push(available_ports[0].clone());
+                    }
+
+                    ui.separator();
                 }
 
-                if ui.button("Add Port").clicked() {
-                    bus_state.system_ports.push(available_ports[0].clone());
+                if ui.button("Add Input Bus").clicked() {
+                    if let Some(new_bus) = config_feedback.new_audio_in_bus() {
+                        config_state.audio_in_busses.push(new_bus);
+                    }
                 }
 
                 ui.separator();
             }
-
-            if ui.button("Add Output Bus").clicked() {
-                if let Some(new_bus) = config_feedback.new_audio_out_bus() {
-                    config_state.audio_out_busses.push(new_bus);
-                }
-            }
-
-            ui.separator();
-        }
-
-        ui.add_space(SPACING);
-
-        // User Audio Input Busses
-
-        if let Some(available_ports) = config_feedback.audio_in_port_options() {
-            ui.heading("Input Busses");
-
-            ui.separator();
-
-            for (bus_i, bus_state) in config_state.audio_in_busses.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut bus_state.id).hint_text("Enter Name"));
-                    ui.label("Name");
-
-                    if ui.button("Remove").clicked() {
-                        // Mark the bus for deletion.
-                        bus_state.do_delete = true;
-                    }
-                });
-
-                let num_system_ports = bus_state.system_ports.len();
-
-                for (port_i, port_state) in bus_state.system_ports.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        // egui requires a unique id for each combo box
-                        let cb_id = format!("user_audio_in_bus_{}_{}", bus_i, port_i);
-
-                        egui::ComboBox::from_id_source(cb_id)
-                            .selected_text(&port_state)
-                            .show_ui(ui, |ui| {
-                                for available_port in available_ports.iter() {
-                                    ui.selectable_value(
-                                        port_state,
-                                        available_port.clone(),
-                                        available_port,
-                                    );
-                                }
-                            });
-
-                        // Don't allow user to delete the only port.
-                        if num_system_ports > 1 {
-                            if ui.small_button("x").clicked() {
-                                // You may rename a port to "" to automatically delete the port.
-                                *port_state = String::from("");
-                            }
-                        }
-                    });
-                }
-
-                if ui.button("Add Port").clicked() {
-                    bus_state.system_ports.push(available_ports[0].clone());
-                }
-
-                ui.separator();
-            }
-
-            if ui.button("Add Input Bus").clicked() {
-                if let Some(new_bus) = config_feedback.new_audio_in_bus() {
-                    config_state.audio_in_busses.push(new_bus);
-                }
-            }
-
-            ui.separator();
-        }
-    });
+        });
+        */
+    }
 }
 
+/*
 fn midi_settings(
     ui: &mut egui::Ui,
     config_state: &mut DeviceIOHelperState,
@@ -728,3 +736,4 @@ fn midi_settings(
         }
     });
 }
+*/
