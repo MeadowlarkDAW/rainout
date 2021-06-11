@@ -3,7 +3,7 @@ use egui::ScrollArea;
 use ringbuf::{Consumer, Producer, RingBuffer};
 
 use rusty_daw_io::{
-    FatalErrorHandler, FatalStreamError, ProcessInfo, RtProcessHandler, StreamHandle, StreamInfo,
+    ConfigStatus, FatalErrorHandler, FatalStreamError, ProcessInfo, RtProcessHandler, StreamInfo,
     SystemOptions,
 };
 
@@ -331,6 +331,34 @@ impl DemoApp {
                     }
                     ui.end_row();
                 });
+
+            ui.separator();
+
+            match self.system_opts.config_status() {
+                ConfigStatus::Ok {
+                    config,
+                    sample_rate,
+                    latency_frames,
+                    latency_ms,
+                } => {
+                    ui.label(format!(
+                        "sample rate: {}  |  latency: {} frames ({:.1} ms)",
+                        sample_rate, latency_frames, latency_ms
+                    ));
+                }
+                ConfigStatus::AudioServerUnavailable(server) => {
+                    ui.label(format!(
+                        "Cannot start audio engine: Audio server {} is unavailable",
+                        server
+                    ));
+                }
+                ConfigStatus::NoAudioDeviceAvailable => {
+                    ui.label("Cannot start audio engine: No audio device is available");
+                }
+                ConfigStatus::UnknownError => {
+                    ui.label("Cannot start audio engine: Unkown error | Please check system logs");
+                }
+            }
 
             ui.add_space(SPACING);
 

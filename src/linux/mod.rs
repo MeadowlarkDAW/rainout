@@ -73,10 +73,11 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     fn estimated_latency(&self, config: &Config) -> Option<u32> {
         match config.audio_server.as_str() {
             "Jack" => {
-                if self.audio_servers_info[0].available {
-                    // First server is Jack.
-                    // Jack only ever uses one device.
-                    // Buffer size in Jack is always constant.
+                // First server is Jack.
+                // Jack only ever uses one device.
+                // Buffer size in Jack is always constant.
+                if let Some(device) = self.audio_servers_info[0].devices.first() {
+                    return Some(device.default_buffer_size);
                 }
             }
             _ => {}
@@ -88,10 +89,11 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     fn sample_rate(&self, config: &Config) -> Option<u32> {
         match config.audio_server.as_str() {
             "Jack" => {
-                if self.audio_servers_info[0].available {
-                    // First server is Jack.
-                    // Jack only ever uses one device.
-                    // Only one sample rate is available, which is the sample rate of the running Jack server.
+                // First server is Jack.
+                // Jack only ever uses one device.
+                // Only one sample rate is available, which is the sample rate of the running Jack server.
+                if let Some(device) = self.audio_servers_info[0].devices.first() {
+                    return Some(device.sample_rates[0]);
                 }
             }
             _ => {}

@@ -1,4 +1,4 @@
-use crate::DevicesInfo;
+use crate::{AudioBusConfig, Config, DevicesInfo, MidiControllerConfig};
 
 #[derive(Debug, Clone, Default)]
 pub struct DisplayState {
@@ -34,7 +34,8 @@ pub struct DisplayState {
     pub midi_in_controllers: Vec<MidiControllerDisplayState>,
     pub midi_out_controllers: Vec<MidiControllerDisplayState>,
 
-    pub is_valid: bool,
+    pub current_audio_server_available: bool,
+    pub current_midi_server_available: bool,
     pub playback_only: bool,
 }
 
@@ -94,6 +95,9 @@ pub struct SystemOptions {
     // For loading the default config
     default_audio_server: usize,
     default_midi_server: usize,
+
+    config_status: ConfigStatus,
+    do_build_config: bool,
 }
 
 impl SystemOptions {
@@ -123,6 +127,9 @@ impl SystemOptions {
 
             default_audio_server,
             default_midi_server,
+
+            config_status: ConfigStatus::default(),
+            do_build_config: false,
         };
 
         new_self.display_state.audio_server_options = new_self
@@ -140,6 +147,9 @@ impl SystemOptions {
 
         new_self.set_audio_defaults();
         new_self.set_midi_defaults();
+
+        new_self.build_config();
+        new_self.do_build_config = true;
 
         new_self
     }
@@ -163,7 +173,16 @@ impl SystemOptions {
                 .map(|d| d.name.clone())
                 .collect();
 
+            self.display_state.current_audio_server_available = self
+                .devices_info
+                .audio_servers_info()[self.display_state.current_audio_server_index]
+                .available;
+
             self.set_defaults_for_current_audio_server();
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -181,9 +200,12 @@ impl SystemOptions {
                     .clone();
 
                 self.set_defaults_for_current_audio_device();
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         } else {
-            self.display_state.is_valid = false;
             self.display_state.playback_only = false;
         }
     }
@@ -199,10 +221,12 @@ impl SystemOptions {
                     self.display_state.sample_rate_options
                         [self.display_state.current_sample_rate_index]
                 );
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         } else {
-            self.display_state.is_valid = false;
-
             self.display_state.current_sample_rate_str = String::from("Unavailable");
         }
     }
@@ -226,10 +250,12 @@ impl SystemOptions {
                     self.display_state.sample_rate_options
                         [self.display_state.current_sample_rate_index]
                 );
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         } else {
-            self.display_state.is_valid = false;
-
             self.display_state.current_buffer_size_str = String::from("Unavailable");
         }
     }
@@ -256,10 +282,12 @@ impl SystemOptions {
                     self.display_state.sample_rate_options
                         [self.display_state.current_sample_rate_index]
                 );
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         } else {
-            self.display_state.is_valid = false;
-
             self.display_state.current_buffer_size_str = String::from("Unavailable");
         }
     }
@@ -272,6 +300,10 @@ impl SystemOptions {
 
         if do_remove {
             self.display_state.audio_in_busses.remove(index);
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -287,6 +319,10 @@ impl SystemOptions {
             // If only one audio out bus is left, mark that it cannot be removed.
             if self.display_state.audio_out_busses.len() == 1 {
                 self.display_state.audio_out_busses[0].can_remove = false;
+            }
+
+            if self.do_build_config {
+                self.build_config();
             }
         }
     }
@@ -341,6 +377,10 @@ impl SystemOptions {
                     }],
                     can_remove: true,
                 });
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -416,18 +456,30 @@ impl SystemOptions {
                     bus.can_remove = true;
                 }
             }
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
     pub fn rename_audio_in_bus<S: Into<String>>(&mut self, bus_index: usize, name: S) {
         if let Some(bus) = self.display_state.audio_in_busses.get_mut(bus_index) {
             bus.id = name.into();
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
     pub fn rename_audio_out_bus<S: Into<String>>(&mut self, bus_index: usize, name: S) {
         if let Some(bus) = self.display_state.audio_out_busses.get_mut(bus_index) {
             bus.id = name.into();
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -444,6 +496,10 @@ impl SystemOptions {
                 // If there is only one port left, mark that it cannot be removed.
                 if bus.ports.len() == 1 {
                     bus.ports[0].can_remove = false;
+                }
+
+                if self.do_build_config {
+                    self.build_config();
                 }
             }
         }
@@ -462,6 +518,10 @@ impl SystemOptions {
                 // If there is only one port left, mark that it cannot be removed.
                 if bus.ports.len() == 1 {
                     bus.ports[0].can_remove = false;
+                }
+
+                if self.do_build_config {
+                    self.build_config();
                 }
             }
         }
@@ -494,6 +554,10 @@ impl SystemOptions {
                         port.can_remove = true;
                     }
                 }
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         }
     }
@@ -525,6 +589,10 @@ impl SystemOptions {
                         port.can_remove = true;
                     }
                 }
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         }
     }
@@ -544,6 +612,10 @@ impl SystemOptions {
                 {
                     port.current_system_port_index = system_port_index;
                     port.current_system_port_name = system_port.clone();
+
+                    if self.do_build_config {
+                        self.build_config();
+                    }
                 }
             }
         }
@@ -564,6 +636,10 @@ impl SystemOptions {
                 {
                     port.current_system_port_index = system_port_index;
                     port.current_system_port_name = system_port.clone();
+
+                    if self.do_build_config {
+                        self.build_config();
+                    }
                 }
             }
         }
@@ -590,19 +666,35 @@ impl SystemOptions {
                 .map(|d| d.name.clone())
                 .collect();
 
+            self.display_state.current_midi_server_available =
+                self.devices_info.midi_servers_info()[self.display_state.current_midi_server_index]
+                    .available;
+
             self.set_defaults_for_current_midi_server();
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
     pub fn remove_midi_in_controller(&mut self, index: usize) {
         if self.display_state.midi_in_controllers.get(index).is_some() {
             self.display_state.midi_in_controllers.remove(index);
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
     pub fn remove_midi_out_controller(&mut self, index: usize) {
         if self.display_state.midi_out_controllers.get(index).is_some() {
             self.display_state.midi_out_controllers.remove(index);
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -650,6 +742,10 @@ impl SystemOptions {
                         can_remove: false,
                     },
                 });
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -697,6 +793,10 @@ impl SystemOptions {
                         can_remove: false,
                     },
                 });
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -707,6 +807,10 @@ impl SystemOptions {
             .get_mut(controller_index)
         {
             controller.id = name.into();
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -721,6 +825,10 @@ impl SystemOptions {
             .get_mut(controller_index)
         {
             controller.id = name.into();
+
+            if self.do_build_config {
+                self.build_config();
+            }
         }
     }
 
@@ -741,6 +849,10 @@ impl SystemOptions {
             {
                 controller.system_port.current_system_port_index = system_port_index;
                 controller.system_port.current_system_port_name = system_port.clone();
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         }
     }
@@ -762,6 +874,10 @@ impl SystemOptions {
             {
                 controller.system_port.current_system_port_index = system_port_index;
                 controller.system_port.current_system_port_name = system_port.clone();
+
+                if self.do_build_config {
+                    self.build_config();
+                }
             }
         }
     }
@@ -776,6 +892,9 @@ impl SystemOptions {
 
         self.devices_info.refresh_audio_servers();
         self.devices_info.refresh_midi_servers();
+
+        // Don't rebuild the config multiple times.
+        self.do_build_config = false;
 
         // Revert to blank slate.
 
@@ -815,7 +934,7 @@ impl SystemOptions {
                 self.select_audio_device(device_i);
 
                 // If device is valid, attempt to restore its previous settings.
-                if self.display_state.is_valid {
+                if !self.display_state.audio_out_system_port_options.is_empty() {
                     // If previous sample rate still exists, use it.
                     for (sample_rate_i, sample_rate) in
                         self.display_state.sample_rate_options.iter().enumerate()
@@ -1004,6 +1123,9 @@ impl SystemOptions {
                     });
             }
         }
+
+        self.build_config();
+        self.do_build_config = true;
     }
 
     pub fn set_audio_defaults(&mut self) {
@@ -1019,7 +1141,15 @@ impl SystemOptions {
             .map(|d| d.name.clone())
             .collect();
 
+        self.display_state.current_audio_server_available = self.devices_info.audio_servers_info()
+            [self.display_state.current_audio_server_index]
+            .available;
+
         self.set_defaults_for_current_audio_server();
+
+        if self.do_build_config {
+            self.build_config();
+        }
     }
 
     pub fn set_midi_defaults(&mut self) {
@@ -1041,12 +1171,18 @@ impl SystemOptions {
             .map(|d| d.name.clone())
             .collect();
 
+        self.display_state.current_midi_server_available = self.devices_info.midi_servers_info()
+            [self.display_state.current_midi_server_index]
+            .available;
+
         self.set_defaults_for_current_midi_server();
+
+        if self.do_build_config {
+            self.build_config();
+        }
     }
 
     pub fn set_defaults_for_current_audio_server(&mut self) {
-        self.display_state.is_valid = false;
-
         self.display_state.current_audio_device_index = self.devices_info.audio_servers_info()
             [self.display_state.current_audio_server_index]
             .default_device;
@@ -1059,11 +1195,13 @@ impl SystemOptions {
             .clone();
 
         self.set_defaults_for_current_audio_device();
+
+        if self.do_build_config {
+            self.build_config();
+        }
     }
 
     pub fn set_defaults_for_current_audio_device(&mut self) {
-        self.display_state.is_valid = false;
-
         self.display_state.audio_in_busses.clear();
         self.display_state.audio_out_busses.clear();
 
@@ -1132,9 +1270,6 @@ impl SystemOptions {
                             ],
                             can_remove: false,
                         });
-
-                    // Only valid if there is atleast one output.
-                    self.display_state.is_valid = true;
                 }
             }
         } else {
@@ -1148,6 +1283,10 @@ impl SystemOptions {
             self.display_state.current_buffer_size_str = String::from("Unavailable");
 
             self.display_state.playback_only = false;
+        }
+
+        if self.do_build_config {
+            self.build_config();
         }
     }
 
@@ -1172,10 +1311,168 @@ impl SystemOptions {
                     },
                 });
         }
+
+        if self.do_build_config {
+            self.build_config();
+        }
     }
 
     pub fn display_state(&self) -> &DisplayState {
         &self.display_state
+    }
+
+    pub fn config_status(&self) -> &ConfigStatus {
+        &self.config_status
+    }
+
+    fn build_config(&mut self) {
+        // Invalid if there are no audio out ports.
+        if self.display_state.audio_out_system_port_options.is_empty() {
+            self.config_status = if self.display_state.current_audio_server_available {
+                ConfigStatus::NoAudioDeviceAvailable
+            } else {
+                ConfigStatus::AudioServerUnavailable(
+                    self.display_state.current_audio_server_name.clone(),
+                )
+            };
+            return;
+        }
+
+        // Sanity checks
+
+        // Invalid if there are no audio out busses. This shouldn't happen.
+        if self.display_state.audio_out_busses.is_empty() {
+            log::error!("Config has no audio out busses. This shouldn't happen.");
+            self.config_status = ConfigStatus::UnknownError;
+            return;
+        }
+        // Invalid if there are no audio in ports and the config wants an audio in bus. This shouldn't happen.
+        if self.display_state.audio_in_system_port_options.is_empty()
+            && !self.display_state.audio_in_busses.is_empty()
+        {
+            log::error!("Config wants to create audio in bus, but device is playback only. This shouldn't happen.");
+            self.config_status = ConfigStatus::UnknownError;
+            return;
+        }
+        // Invalid if there are no midi in ports and the config wants a midi in controller. This shouldn't happen.
+        if self.display_state.midi_in_system_port_options.is_empty()
+            && !self.display_state.midi_in_controllers.is_empty()
+        {
+            log::error!("Config wants to create midi in controller, but no system midi in ports were found. This shouldn't happen.");
+            self.config_status = ConfigStatus::UnknownError;
+            return;
+        }
+        // Invalid if there are no midi out ports and the config wants a midi out controller. This shouldn't happen.
+        if self.display_state.midi_out_system_port_options.is_empty()
+            && !self.display_state.midi_out_controllers.is_empty()
+        {
+            log::error!("Config wants to create midi out controller, but no system midi out ports were found. This shouldn't happen.");
+            self.config_status = ConfigStatus::UnknownError;
+            return;
+        }
+
+        let audio_in_busses = self
+            .display_state
+            .audio_in_busses
+            .iter()
+            .map(|b| AudioBusConfig {
+                id: b.id.clone(),
+                system_ports: b
+                    .ports
+                    .iter()
+                    .map(|p| p.current_system_port_name.clone())
+                    .collect(),
+            })
+            .collect();
+
+        let audio_out_busses = self
+            .display_state
+            .audio_out_busses
+            .iter()
+            .map(|b| AudioBusConfig {
+                id: b.id.clone(),
+                system_ports: b
+                    .ports
+                    .iter()
+                    .map(|p| p.current_system_port_name.clone())
+                    .collect(),
+            })
+            .collect();
+
+        let (midi_server, midi_in_controllers, midi_out_controllers) =
+            if !self.display_state.midi_in_controllers.is_empty()
+                || !self.display_state.midi_out_controllers.is_empty()
+            {
+                (
+                    Some(self.display_state.current_midi_server_name.clone()),
+                    self.display_state
+                        .midi_in_controllers
+                        .iter()
+                        .map(|c| MidiControllerConfig {
+                            id: c.id.clone(),
+                            system_port: c.system_port.current_system_port_name.clone(),
+                        })
+                        .collect(),
+                    self.display_state
+                        .midi_out_controllers
+                        .iter()
+                        .map(|c| MidiControllerConfig {
+                            id: c.id.clone(),
+                            system_port: c.system_port.current_system_port_name.clone(),
+                        })
+                        .collect(),
+                )
+            } else {
+                (None, Vec::new(), Vec::new())
+            };
+
+        let config = Config {
+            audio_server: self.display_state.current_audio_server_name.clone(),
+            system_audio_device: self.display_state.current_audio_device_name.clone(),
+
+            audio_in_busses,
+            audio_out_busses,
+
+            sample_rate: self
+                .display_state
+                .sample_rate_options
+                .get(self.display_state.current_sample_rate_index)
+                .map(|s| *s),
+            buffer_size: Some(self.display_state.current_buffer_size),
+
+            midi_server,
+            midi_in_controllers,
+            midi_out_controllers,
+        };
+        let sample_rate = self.devices_info.sample_rate(&config).unwrap_or(1);
+        let latency_frames = self.devices_info.estimated_latency(&config).unwrap_or(0);
+        let latency_ms = 1_000.0 * f64::from(latency_frames) / f64::from(sample_rate);
+
+        self.config_status = ConfigStatus::Ok {
+            config,
+            sample_rate,
+            latency_frames,
+            latency_ms,
+        };
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ConfigStatus {
+    Ok {
+        config: Config,
+        sample_rate: u32,
+        latency_frames: u32,
+        latency_ms: f64,
+    },
+    AudioServerUnavailable(String),
+    NoAudioDeviceAvailable,
+    UnknownError,
+}
+
+impl Default for ConfigStatus {
+    fn default() -> Self {
+        ConfigStatus::UnknownError
     }
 }
 
