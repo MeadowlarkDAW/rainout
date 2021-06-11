@@ -64,6 +64,7 @@ impl<P: RtProcessHandler, E: FatalErrorHandler> StreamHandle<P, E> {
     }
 }
 
+#[derive(Debug)]
 pub struct DevicesInfo {
     #[cfg(target_os = "linux")]
     os_info: LinuxDevicesInfo,
@@ -93,6 +94,13 @@ impl DevicesInfo {
         self.os_info.midi_servers_info()
     }
 
+    pub fn default_audio_server(&self) -> &String {
+        self.os_info.default_audio_server()
+    }
+    pub fn default_midi_server(&self) -> &String {
+        self.os_info.default_midi_server()
+    }
+
     pub fn estimated_latency(&self, config: &Config) -> Option<u32> {
         self.os_info.estimated_latency(config)
     }
@@ -115,8 +123,8 @@ trait OsDevicesInfo {
     fn audio_servers_info(&self) -> &[AudioServerInfo];
     fn midi_servers_info(&self) -> &[MidiServerInfo];
 
-    fn default_audio_server(&self) -> String;
-    fn default_midi_config(&self) -> String;
+    fn default_audio_server(&self) -> &String;
+    fn default_midi_server(&self) -> &String;
 
     fn estimated_latency(&self, config: &Config) -> Option<u32>;
     fn sample_rate(&self, config: &Config) -> Option<u32>;

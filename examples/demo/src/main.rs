@@ -201,7 +201,9 @@ impl DemoApp {
         ui.horizontal(|ui| {
             ui.heading("Audio Devices");
 
-            if ui.button("Refresh").clicked() {}
+            if ui.button("Refresh").clicked() {
+                self.system_opts.refresh_servers();
+            }
 
             // Can't figure out how to right-align elements in egui. Use spacing as a hacky
             // way to mimic this.
@@ -213,11 +215,355 @@ impl DemoApp {
         ScrollArea::auto_sized().show(ui, |ui| {
             ui.add_space(SPACING / 2.0);
 
-            // Audio server (driver model)
+            egui::Grid::new("audio_settings_grid")
+                .striped(true)
+                .spacing([50.0, 8.0])
+                .show(ui, |ui| {
+                    // Audio server (driver model)
 
-            ui.heading("System Device");
+                    ui.label("Driver Model");
+                    let mut audio_server_selection =
+                        self.system_opts.display_state().current_audio_server_index;
+                    egui::ComboBox::from_id_source("driver_model")
+                        .selected_text(&self.system_opts.display_state().current_audio_server_name)
+                        .show_ui(ui, |ui| {
+                            for (i, option) in self
+                                .system_opts
+                                .display_state()
+                                .audio_server_options
+                                .iter()
+                                .enumerate()
+                            {
+                                ui.selectable_value(&mut audio_server_selection, i, option);
+                            }
+                        });
+                    if audio_server_selection
+                        != self.system_opts.display_state().current_audio_server_index
+                    {
+                        self.system_opts.select_audio_server(audio_server_selection);
+                    }
+                    ui.end_row();
+
+                    // Audio device
+
+                    ui.label("Audio Device");
+                    if self.system_opts.display_state().audio_device_options.len() < 2 {
+                        // Don't display a combo box if audio device is not configurable.
+                        ui.label(&self.system_opts.display_state().current_audio_device_name);
+                    } else {
+                        let mut audio_device_selection =
+                            self.system_opts.display_state().current_audio_device_index;
+                        egui::ComboBox::from_id_source("audio_device")
+                            .selected_text(
+                                &self.system_opts.display_state().current_audio_device_name,
+                            )
+                            .show_ui(ui, |ui| {
+                                for (i, option) in self
+                                    .system_opts
+                                    .display_state()
+                                    .audio_device_options
+                                    .iter()
+                                    .enumerate()
+                                {
+                                    ui.selectable_value(&mut audio_device_selection, i, option);
+                                }
+                            });
+                        if audio_device_selection
+                            != self.system_opts.display_state().current_audio_device_index
+                        {
+                            self.system_opts.select_audio_device(audio_device_selection);
+                        }
+                    }
+                    ui.end_row();
+
+                    // Sample rate
+
+                    ui.label("Sample Rate");
+                    if self.system_opts.display_state().sample_rate_options.len() < 2 {
+                        // Don't display a combo box if sample rate is not configurable.
+                        ui.label(&self.system_opts.display_state().current_sample_rate_str);
+                    } else {
+                        let mut sample_rate_selection =
+                            self.system_opts.display_state().current_sample_rate_index;
+                        egui::ComboBox::from_id_source("sample_rate")
+                            .selected_text(
+                                &self.system_opts.display_state().current_sample_rate_str,
+                            )
+                            .show_ui(ui, |ui| {
+                                for (i, option) in self
+                                    .system_opts
+                                    .display_state()
+                                    .sample_rate_options
+                                    .iter()
+                                    .enumerate()
+                                {
+                                    ui.selectable_value(&mut sample_rate_selection, i, option);
+                                }
+                            });
+                        if sample_rate_selection
+                            != self.system_opts.display_state().current_sample_rate_index
+                        {
+                            self.system_opts.select_sample_rate(sample_rate_selection);
+                        }
+                    }
+                    ui.end_row();
+
+                    // Buffer size
+
+                    ui.label("Buffer Size");
+                    let min = self.system_opts.display_state().buffer_size_range.min;
+                    let max = self.system_opts.display_state().buffer_size_range.max;
+                    if min == max {
+                        // Don't display a slider if buffer size is not configurable.
+                        ui.label(&self.system_opts.display_state().current_buffer_size_str);
+                    } else {
+                        let mut selected_buffer_size =
+                            self.system_opts.display_state().current_buffer_size;
+                        if ui
+                            .add(egui::Slider::new(&mut selected_buffer_size, min..=max))
+                            .changed()
+                        {
+                            self.system_opts.select_buffer_size(selected_buffer_size);
+                        };
+                        if ui.button("Auto").clicked() {
+                            self.system_opts.select_auto_buffer_size();
+                        }
+                    }
+                    ui.end_row();
+                });
+
+            ui.add_space(SPACING);
+
+            ui.heading("Output Busses");
 
             ui.separator();
+
+            // Play nicely with borrow checker and egui's closures.
+            let mut name_changes: Vec<(usize, String)> = Vec::new();
+            let mut remove_busses: Vec<usize> = Vec::new();
+            let mut system_port_changes: Vec<(usize, usize, usize)> = Vec::new();
+            let mut remove_ports: Vec<(usize, usize)> = Vec::new();
+            let mut add_new_port: Vec<usize> = Vec::new();
+            for (bus_i, bus) in self
+                .system_opts
+                .display_state()
+                .audio_out_busses
+                .iter()
+                .enumerate()
+            {
+                // egui requires a unique id for each grid
+                let grid_id = format!("out_bus_grid_{}", bus_i);
+                egui::Grid::new(grid_id)
+                    .striped(true)
+                    .spacing([50.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label("Name");
+                        let mut bus_name = bus.id.clone();
+                        if ui
+                            .add(egui::TextEdit::singleline(&mut bus_name).hint_text("Enter Name"))
+                            .changed()
+                        {
+                            name_changes.push((bus_i, bus_name));
+                        };
+                        if ui
+                            .add(egui::Button::new("Remove Bus").enabled(bus.can_remove))
+                            .clicked()
+                        {
+                            remove_busses.push(bus_i);
+                        }
+                        ui.end_row();
+
+                        for (port_i, port) in bus.ports.iter().enumerate() {
+                            ui.label(format!("port #{}", port_i + 1));
+
+                            let mut system_port_selection = port.current_system_port_index;
+
+                            // egui requires a unique id for each combo box
+                            let cb_id = format!("out_bus_{}_port_{}", bus_i, port_i);
+                            egui::ComboBox::from_id_source(cb_id)
+                                .selected_text(&port.current_system_port_name)
+                                .show_ui(ui, |ui| {
+                                    for (i, option) in self
+                                        .system_opts
+                                        .display_state()
+                                        .audio_out_system_port_options
+                                        .iter()
+                                        .enumerate()
+                                    {
+                                        if ui
+                                            .selectable_value(&mut system_port_selection, i, option)
+                                            .changed()
+                                        {
+                                            system_port_changes.push((
+                                                bus_i,
+                                                port_i,
+                                                system_port_selection,
+                                            ));
+                                        };
+                                    }
+                                });
+
+                            if ui
+                                .add(egui::Button::new("x").enabled(port.can_remove))
+                                .clicked()
+                            {
+                                remove_ports.push((bus_i, port_i));
+                            }
+
+                            ui.end_row();
+                        }
+
+                        if ui.button("Add Port").clicked() {
+                            add_new_port.push(bus_i);
+                        }
+                    });
+
+                ui.separator();
+            }
+            if ui.button("Add Bus").clicked() {
+                self.system_opts.add_audio_out_bus();
+            }
+            for (bus_i, new_name) in name_changes.iter() {
+                self.system_opts.rename_audio_out_bus(*bus_i, new_name);
+            }
+            for bus_i in remove_busses.iter() {
+                self.system_opts.remove_audio_out_bus(*bus_i);
+            }
+            for (bus_i, port_i, new_system_port) in system_port_changes.iter() {
+                self.system_opts.select_audio_out_bus_system_port(
+                    *bus_i,
+                    *port_i,
+                    *new_system_port,
+                );
+            }
+            for (bus_i, port_i) in remove_ports {
+                self.system_opts.remove_audio_out_bus_port(bus_i, port_i);
+            }
+            for bus_i in add_new_port.iter() {
+                self.system_opts.add_audio_out_bus_port(*bus_i);
+            }
+
+            ui.add_space(SPACING);
+
+            ui.heading("Input Busses");
+
+            ui.separator();
+
+            if self.system_opts.display_state().playback_only {
+                ui.label("(Playback only)");
+            } else {
+                // Play nicely with borrow checker and egui's closures.
+                let mut name_changes: Vec<(usize, String)> = Vec::new();
+                let mut remove_busses: Vec<usize> = Vec::new();
+                let mut system_port_changes: Vec<(usize, usize, usize)> = Vec::new();
+                let mut remove_ports: Vec<(usize, usize)> = Vec::new();
+                let mut add_new_port: Vec<usize> = Vec::new();
+                for (bus_i, bus) in self
+                    .system_opts
+                    .display_state()
+                    .audio_in_busses
+                    .iter()
+                    .enumerate()
+                {
+                    // egui requires a unique id for each grid
+                    let grid_id = format!("in_bus_grid_{}", bus_i);
+                    egui::Grid::new(grid_id)
+                        .striped(true)
+                        .spacing([50.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label("Name");
+                            let mut bus_name = bus.id.clone();
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut bus_name)
+                                        .hint_text("Enter Name"),
+                                )
+                                .changed()
+                            {
+                                name_changes.push((bus_i, bus_name));
+                            };
+                            if ui
+                                .add(egui::Button::new("Remove Bus").enabled(bus.can_remove))
+                                .clicked()
+                            {
+                                remove_busses.push(bus_i);
+                            }
+                            ui.end_row();
+
+                            for (port_i, port) in bus.ports.iter().enumerate() {
+                                ui.label(format!("port #{}", port_i + 1));
+
+                                let mut system_port_selection = port.current_system_port_index;
+
+                                // egui requires a unique id for each combo box
+                                let cb_id = format!("in_bus_{}_port_{}", bus_i, port_i);
+                                egui::ComboBox::from_id_source(cb_id)
+                                    .selected_text(&port.current_system_port_name)
+                                    .show_ui(ui, |ui| {
+                                        for (i, option) in self
+                                            .system_opts
+                                            .display_state()
+                                            .audio_in_system_port_options
+                                            .iter()
+                                            .enumerate()
+                                        {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut system_port_selection,
+                                                    i,
+                                                    option,
+                                                )
+                                                .changed()
+                                            {
+                                                system_port_changes.push((
+                                                    bus_i,
+                                                    port_i,
+                                                    system_port_selection,
+                                                ));
+                                            };
+                                        }
+                                    });
+
+                                if ui
+                                    .add(egui::Button::new("x").enabled(port.can_remove))
+                                    .clicked()
+                                {
+                                    remove_ports.push((bus_i, port_i));
+                                }
+
+                                ui.end_row();
+                            }
+
+                            if ui.button("Add Port").clicked() {
+                                add_new_port.push(bus_i);
+                            }
+                        });
+
+                    ui.separator();
+                }
+                if ui.button("Add Bus").clicked() {
+                    self.system_opts.add_audio_in_bus();
+                }
+                for (bus_i, new_name) in name_changes.iter() {
+                    self.system_opts.rename_audio_in_bus(*bus_i, new_name);
+                }
+                for bus_i in remove_busses.iter() {
+                    self.system_opts.remove_audio_in_bus(*bus_i);
+                }
+                for (bus_i, port_i, new_system_port) in system_port_changes.iter() {
+                    self.system_opts.select_audio_in_bus_system_port(
+                        *bus_i,
+                        *port_i,
+                        *new_system_port,
+                    );
+                }
+                for (bus_i, port_i) in remove_ports {
+                    self.system_opts.remove_audio_in_bus_port(bus_i, port_i);
+                }
+                for bus_i in add_new_port.iter() {
+                    self.system_opts.add_audio_in_bus_port(*bus_i);
+                }
+            }
         });
 
         /*

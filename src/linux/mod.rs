@@ -1,6 +1,6 @@
 use super::{
-    AudioServerDevices, AudioServerInfo, BufferSizeInfo, Config, FatalErrorHandler, MidiServerInfo,
-    OsDevicesInfo, OsStreamHandle, RtProcessHandler, SpawnRtThreadError, StreamInfo,
+    AudioServerInfo, Config, FatalErrorHandler, MidiServerInfo, OsDevicesInfo, OsStreamHandle,
+    RtProcessHandler, SpawnRtThreadError, StreamInfo,
 };
 
 mod jack_backend;
@@ -19,6 +19,7 @@ impl<P: RtProcessHandler, E: FatalErrorHandler> OsStreamHandle for LinuxStreamHa
     }
 }
 
+#[derive(Debug)]
 pub struct LinuxDevicesInfo {
     audio_servers_info: [AudioServerInfo; 1],
     midi_servers_info: [MidiServerInfo; 1],
@@ -56,24 +57,17 @@ impl OsDevicesInfo for LinuxDevicesInfo {
     fn audio_servers_info(&self) -> &[AudioServerInfo] {
         &self.audio_servers_info
     }
-
     fn midi_servers_info(&self) -> &[MidiServerInfo] {
         &self.midi_servers_info
     }
 
-    fn default_audio_server(&self) -> String {
-        if self.audio_servers_info[0].available {
-            String::from("ALSA")
-        } else {
-            String::from("Jack")
-        }
+    fn default_audio_server(&self) -> &String {
+        // Only Jack server for now.
+        &self.audio_servers_info[0].name
     }
-    fn default_midi_config(&self) -> String {
-        if self.midi_servers_info[0].available {
-            String::from("ALSA")
-        } else {
-            String::from("Jack")
-        }
+    fn default_midi_server(&self) -> &String {
+        // Only Jack server for now.
+        &self.midi_servers_info[0].name
     }
 
     fn estimated_latency(&self, config: &Config) -> Option<u32> {
@@ -83,13 +77,6 @@ impl OsDevicesInfo for LinuxDevicesInfo {
                     // First server is Jack.
                     // Jack only ever uses one device.
                     // Buffer size in Jack is always constant.
-                    if let Some(AudioServerDevices::SingleDevice(device)) =
-                        &self.audio_servers_info[0].devices
-                    {
-                        if let BufferSizeInfo::ConstantSize(size) = &device.buffer_size {
-                            return Some(*size);
-                        }
-                    }
                 }
             }
             _ => {}
@@ -105,11 +92,6 @@ impl OsDevicesInfo for LinuxDevicesInfo {
                     // First server is Jack.
                     // Jack only ever uses one device.
                     // Only one sample rate is available, which is the sample rate of the running Jack server.
-                    if let Some(AudioServerDevices::SingleDevice(device)) =
-                        &self.audio_servers_info[0].devices
-                    {
-                        return Some(device.sample_rates[0]);
-                    }
                 }
             }
             _ => {}

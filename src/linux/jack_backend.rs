@@ -1,16 +1,15 @@
 use log::{debug, info, warn};
 
 use crate::{
-    AudioBus, AudioBusBuffer, AudioServerDevices, AudioServerInfo, BufferSizeInfo, Config,
+    AudioBus, AudioBusBuffer, AudioDeviceInfo, AudioServerInfo, BufferSizeRange, Config,
     DeviceIndex, FatalErrorHandler, FatalStreamError, MidiController, MidiControllerBuffer,
     MidiDeviceInfo, MidiServerInfo, ProcessInfo, RtProcessHandler, SpawnRtThreadError, StreamInfo,
-    SystemDeviceInfo,
 };
 
 pub fn refresh_audio_server(server: &mut AudioServerInfo) {
     info!("Refreshing list of available Jack audio devices...");
 
-    server.devices = None;
+    server.devices.clear();
 
     match jack::Client::new("rustydaw_io_dummy_client", jack::ClientOptions::empty()) {
         Ok((client, _status)) => {
@@ -30,15 +29,53 @@ pub fn refresh_audio_server(server: &mut AudioServerInfo) {
 
                 server.available = false;
 
-                info!("Jack server is unavailable: Jack system device has no available audio outputs.");
+                warn!("Jack server is unavailable: Jack system device has no available audio outputs.");
             } else {
-                server.devices = Some(AudioServerDevices::SingleDevice(SystemDeviceInfo {
-                    name: String::from("Jack Server"),
+                // Find index of default in ports.
+                let mut default_in_port = 0; // Fallback to first available port.
+                for (i, port) in system_audio_in_ports.iter().enumerate() {
+                    if port == "system:capture_1" {
+                        default_in_port = i;
+                        break;
+                    }
+                }
+
+                // Find index of default out left port.
+                let mut default_out_port_left = 0; // Fallback to first available port.
+                for (i, port) in system_audio_out_ports.iter().enumerate() {
+                    if port == "system:playback_1" {
+                        default_out_port_left = i;
+                        break;
+                    }
+                }
+
+                // Find index of default out right port.
+                let mut default_out_port_right = 1.min(system_audio_out_ports.len() - 1); // Fallback to second available port if stereo, first if mono.
+                for (i, port) in system_audio_out_ports.iter().enumerate() {
+                    if port == "system:playback_2" {
+                        default_out_port_right = i;
+                        break;
+                    }
+                }
+
+                // Jack only ever has one "device".
+                server.devices.push(AudioDeviceInfo {
+                    name: String::from("Jack Device"),
                     in_ports: system_audio_in_ports,
                     out_ports: system_audio_out_ports,
-                    sample_rates: vec![client.sample_rate() as u32],
-                    buffer_size: BufferSizeInfo::ConstantSize(client.buffer_size() as u32),
-                }));
+                    sample_rates: vec![client.sample_rate() as u32], // Only one sample rate is available.
+                    buffer_size_range: BufferSizeRange {
+                        // Only one buffer size is available.
+                        min: client.buffer_size() as u32,
+                        max: client.buffer_size() as u32,
+                    },
+
+                    default_in_port,
+                    default_out_port_left,
+                    default_out_port_right,
+                    default_sample_rate_index: 0, // Only one sample rate is available.
+                    default_buffer_size: client.buffer_size() as u32, // Only one buffer size is available.
+                });
 
                 server.available = true;
             }
@@ -68,17 +105,27 @@ pub fn refresh_midi_server(server: &mut MidiServerInfo) {
                 server.in_devices.push(MidiDeviceInfo {
                     name: system_port_name.clone(),
                 });
-
-                info!("Found MIDI in port: {}", &system_port_name);
             }
 
             for system_port_name in system_midi_out_ports.iter() {
                 server.out_devices.push(MidiDeviceInfo {
                     name: system_port_name.clone(),
                 });
-
-                info!("Found MIDI out port: {}", &system_port_name);
             }
+
+            // Find index of default in port.
+            let mut default_in_port = 0; // Fallback to first available port.
+            for (i, port) in system_midi_in_ports.iter().enumerate() {
+                // "system:midi_capture_1" is usually Jack's built-in `Midi-Through` device.
+                // What we usually want is first available port of the user's hardware MIDI controller, which is
+                // commonly mapped to "system:midi_capture_2".
+                if port == "system:midi_capture_2" {
+                    default_in_port = i;
+                    break;
+                }
+            }
+
+            server.default_in_port = default_in_port;
 
             server.available = true;
         }
@@ -249,7 +296,7 @@ pub fn spawn_rt_thread<P: RtProcessHandler, E: FatalErrorHandler>(
         midi_in: midi_in_controllers,
         midi_out: midi_out_controllers,
         sample_rate: sample_rate as u32,
-        audio_buffer_size: BufferSizeInfo::ConstantSize(max_audio_buffer_size),
+        max_audio_buffer_size,
     };
 
     rt_process_handler.init(&stream_info);
