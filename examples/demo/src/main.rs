@@ -169,7 +169,7 @@ impl epi::App for DemoApp {
 
             match settings_tab {
                 SettingsTab::Audio => self.audio_settings(ui),
-                SettingsTab::Midi => (),
+                SettingsTab::Midi => self.midi_settings(ui),
             }
         });
 
@@ -565,63 +565,19 @@ impl DemoApp {
                 }
             }
         });
+    }
 
-        /*
+    fn midi_settings(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            use rusty_daw_io::save_file::{
-                load_audio_config_from_file, write_audio_config_to_file,
-            };
-
-            ui.heading("Audio Devices");
+            ui.heading("Midi Devices");
 
             if ui.button("Refresh").clicked() {
-                config_state.do_refresh_audio_servers = true;
+                self.system_opts.refresh_servers();
             }
 
             // Can't figure out how to right-align elements in egui. Use spacing as a hacky
             // way to mimic this.
             ui.add_space(150.0);
-
-            if let Some(audio_config) = config_feedback.audio_config() {
-                if ui.button("Save Audio Config").clicked() {
-                    // Just using the root directory and a default filename, but you can use the system's
-                    // file dialog instead.
-                    match write_audio_config_to_file("test_audio_config.xml", audio_config) {
-                        Ok(()) => {
-                            *status_msg = String::from(
-                                "Successfully saved config to \"test_audio_config.xml\"",
-                            );
-                            println!("{}", status_msg);
-                        }
-                        Err(e) => {
-                            *status_msg = format!("Error saving config: {}", e);
-                            eprintln!("{}", status_msg);
-                        }
-                    }
-
-                    // Show the status message to the user as a pop-up window.
-                    *status_msg_open = true;
-                }
-            } else {
-                ui.add(egui::Button::new("Save Audio Config").enabled(false));
-            }
-
-            if ui.button("Load Audio Config").clicked() {
-                // Just using the root directory and a default filename, but you can use the system's
-                // file dialog instead.
-                match load_audio_config_from_file("test_audio_config.xml") {
-                    Ok(new_config) => {
-                        config_state.do_load_audio_config = Some(new_config);
-                    }
-                    Err(e) => {
-                        *status_msg = format!("Error loading config: {}", e);
-                        eprintln!("{}", status_msg);
-
-                        // Show the status message to the user as a pop-up window.
-                        *status_msg_open = true;
-                    }
-                }
-            }
         });
 
         ui.separator();
@@ -629,457 +585,223 @@ impl DemoApp {
         ScrollArea::auto_sized().show(ui, |ui| {
             ui.add_space(SPACING / 2.0);
 
-            // Audio server (driver model)
+            egui::Grid::new("midi_settings_grid")
+                .striped(true)
+                .spacing([50.0, 8.0])
+                .show(ui, |ui| {
+                    // Midi server (driver model)
 
-            ui.heading("System Device");
-
-            ui.separator();
-
-            egui::ComboBox::from_label("Driver Model")
-                .selected_text(
-                    &config_feedback.audio_server_options()[config_state.audio_server_index],
-                )
-                .show_ui(ui, |ui| {
-                    for (i, option) in config_feedback.audio_server_options().iter().enumerate() {
-                        ui.selectable_value(&mut config_state.audio_server_index, i, option);
+                    ui.label("Driver Model");
+                    let mut midi_server_selection =
+                        self.system_opts.display_state().current_midi_server_index;
+                    egui::ComboBox::from_id_source("driver_model")
+                        .selected_text(&self.system_opts.display_state().current_midi_server_name)
+                        .show_ui(ui, |ui| {
+                            for (i, option) in self
+                                .system_opts
+                                .display_state()
+                                .midi_server_options
+                                .iter()
+                                .enumerate()
+                            {
+                                ui.selectable_value(&mut midi_server_selection, i, option);
+                            }
+                        });
+                    if midi_server_selection
+                        != self.system_opts.display_state().current_midi_server_index
+                    {
+                        self.system_opts.select_midi_server(midi_server_selection);
                     }
+                    ui.end_row();
                 });
 
+            ui.add_space(SPACING);
+
+            ui.heading("Input Controllers");
+
             ui.separator();
 
-            // Audio device
-
-            if let Some(audio_device_options) = config_feedback.audio_device_options() {
-                egui::ComboBox::from_label("Device")
-                    .selected_text(&audio_device_options[config_state.audio_device_index])
-                    .show_ui(ui, |ui| {
-                        for (i, option) in audio_device_options.iter().enumerate() {
-                            ui.selectable_value(&mut config_state.audio_device_index, i, option);
-                        }
-                    });
-
-                if config_feedback.audio_device_playback_only() {
-                    ui.label("(Playback only)");
-                }
-            }
-
-            // Sample rate
-
-            if let Some(sample_rate_options) = config_feedback.sample_rate_options() {
-                egui::ComboBox::from_label("Sample Rate")
-                    .selected_text(&sample_rate_options[config_state.sample_rate_index])
-                    .show_ui(ui, |ui| {
-                        for (i, option) in sample_rate_options.iter().enumerate() {
-                            ui.selectable_value(&mut config_state.sample_rate_index, i, option);
-                        }
-                    });
-            }
-
-            // Buffer Size
-
-            if let Some(buffer_size_options) = config_feedback.buffer_size_options() {
-                match buffer_size_options {
-                    BufferSizeOptions::UnknownSize => {
-                        ui.label("Unkown buffer size");
-                    }
-                    BufferSizeOptions::Constant { auto_value } => {
-                        ui.label(format!("Buffer Size: {}", *auto_value));
-                    }
-                    BufferSizeOptions::Range {
-                        auto_value,
-                        min,
-                        max,
-                        ..
-                    } => {
-                        ui.horizontal(|ui| {
-                            if ui.button("Auto").clicked() {
-                                config_state.buffer_size = *auto_value;
+            if self
+                .system_opts
+                .display_state()
+                .midi_in_system_port_options
+                .is_empty()
+            {
+                ui.label("(No midi in ports found)");
+            } else {
+                // Play nicely with borrow checker and egui's closures.
+                let mut name_changes: Vec<(usize, String)> = Vec::new();
+                let mut remove_controllers: Vec<usize> = Vec::new();
+                let mut system_port_changes: Vec<(usize, usize)> = Vec::new();
+                for (controller_i, controller) in self
+                    .system_opts
+                    .display_state()
+                    .midi_in_controllers
+                    .iter()
+                    .enumerate()
+                {
+                    // egui requires a unique id for each grid
+                    let grid_id = format!("in_controller_grid_{}", controller_i);
+                    egui::Grid::new(grid_id)
+                        .striped(true)
+                        .spacing([50.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label("Name");
+                            let mut controller_name = controller.id.clone();
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut controller_name)
+                                        .hint_text("Enter Name"),
+                                )
+                                .changed()
+                            {
+                                name_changes.push((controller_i, controller_name));
+                            };
+                            if ui.add(egui::Button::new("Remove")).clicked() {
+                                remove_controllers.push(controller_i);
                             }
+                            ui.end_row();
 
-                            ui.add(egui::Slider::new(
-                                &mut config_state.buffer_size,
-                                *min..=*max,
-                            ));
+                            ui.label("port");
 
-                            ui.label("Buffer Size");
+                            let mut system_port_selection =
+                                controller.system_port.current_system_port_index;
+
+                            // egui requires a unique id for each combo box
+                            let cb_id = format!("in_controller_{}_port", controller_i);
+                            egui::ComboBox::from_id_source(cb_id)
+                                .selected_text(&controller.system_port.current_system_port_name)
+                                .show_ui(ui, |ui| {
+                                    for (i, option) in self
+                                        .system_opts
+                                        .display_state()
+                                        .midi_in_system_port_options
+                                        .iter()
+                                        .enumerate()
+                                    {
+                                        if ui
+                                            .selectable_value(&mut system_port_selection, i, option)
+                                            .changed()
+                                        {
+                                            system_port_changes
+                                                .push((controller_i, system_port_selection));
+                                        };
+                                    }
+                                });
+                            ui.end_row();
                         });
-                    }
+
+                    ui.separator();
                 }
-            }
-
-            ui.separator();
-
-            // Current Info
-
-            if let Some(info) = config_feedback.audio_config_info() {
-                ui.label(format!("Using sample rate: {}", info.sample_rate));
-                ui.label(format!(
-                    "Estimated latency: {} frames ({:.1} ms)",
-                    info.estimated_latency, info.estimated_latency_ms,
-                ));
-            }
-
-            // Error States
-
-            if config_feedback.audio_device_not_selected() {
-                ui.label("Cannot start audio engine. No device is selected.");
-            }
-
-            if config_feedback.audio_server_unavailable() {
-                ui.label(format!(
-                    "Cannot start audio engine. {} audio server is unavailable",
-                    config_feedback.audio_server_options()[config_state.audio_server_index]
-                ));
+                if ui.button("Add Controller").clicked() {
+                    self.system_opts.add_midi_in_controller();
+                }
+                for (controller_i, new_name) in name_changes.iter() {
+                    self.system_opts
+                        .rename_midi_in_controller(*controller_i, new_name);
+                }
+                for controller_i in remove_controllers.iter() {
+                    self.system_opts.remove_midi_in_controller(*controller_i);
+                }
+                for (controller_i, new_system_port) in system_port_changes.iter() {
+                    self.system_opts
+                        .select_midi_in_controller_system_port(*controller_i, *new_system_port);
+                }
             }
 
             ui.add_space(SPACING);
 
-            // User Audio Output Busses
+            ui.heading("Output Controllers");
 
-            if let Some(available_ports) = config_feedback.audio_out_port_options() {
-                ui.heading("Output Busses");
+            ui.separator();
 
-                ui.separator();
-
-                let num_out_busses = config_state.audio_out_busses.len();
-
-                for (bus_i, bus_state) in config_state.audio_out_busses.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut bus_state.id).hint_text("Enter Name"),
-                        );
-                        ui.label("Name");
-
-                        // Don't allow user to delete the only output bus.
-                        if num_out_busses > 1 {
-                            if ui.button("Remove").clicked() {
-                                // Mark the device for deletion.
-                                bus_state.do_delete = true;
+            if self
+                .system_opts
+                .display_state()
+                .midi_out_system_port_options
+                .is_empty()
+            {
+                ui.label("(No midi out ports found)");
+            } else {
+                // Play nicely with borrow checker and egui's closures.
+                let mut name_changes: Vec<(usize, String)> = Vec::new();
+                let mut remove_controllers: Vec<usize> = Vec::new();
+                let mut system_port_changes: Vec<(usize, usize)> = Vec::new();
+                for (controller_i, controller) in self
+                    .system_opts
+                    .display_state()
+                    .midi_out_controllers
+                    .iter()
+                    .enumerate()
+                {
+                    // egui requires a unique id for each grid
+                    let grid_id = format!("out_controller_grid_{}", controller_i);
+                    egui::Grid::new(grid_id)
+                        .striped(true)
+                        .spacing([50.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label("Name");
+                            let mut controller_name = controller.id.clone();
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut controller_name)
+                                        .hint_text("Enter Name"),
+                                )
+                                .changed()
+                            {
+                                name_changes.push((controller_i, controller_name));
+                            };
+                            if ui.add(egui::Button::new("Remove")).clicked() {
+                                remove_controllers.push(controller_i);
                             }
-                        }
-                    });
+                            ui.end_row();
 
-                    let num_system_ports = bus_state.system_ports.len();
+                            ui.label("port");
 
-                    for (port_i, port_state) in bus_state.system_ports.iter_mut().enumerate() {
-                        ui.horizontal(|ui| {
+                            let mut system_port_selection =
+                                controller.system_port.current_system_port_index;
+
                             // egui requires a unique id for each combo box
-                            let cb_id = format!("user_audio_out_bus_{}_{}", bus_i, port_i);
-
+                            let cb_id = format!("out_controller_{}_port", controller_i);
                             egui::ComboBox::from_id_source(cb_id)
-                                .selected_text(&port_state)
+                                .selected_text(&controller.system_port.current_system_port_name)
                                 .show_ui(ui, |ui| {
-                                    for available_port in available_ports.iter() {
-                                        ui.selectable_value(
-                                            port_state,
-                                            available_port.clone(),
-                                            available_port,
-                                        );
+                                    for (i, option) in self
+                                        .system_opts
+                                        .display_state()
+                                        .midi_out_system_port_options
+                                        .iter()
+                                        .enumerate()
+                                    {
+                                        if ui
+                                            .selectable_value(&mut system_port_selection, i, option)
+                                            .changed()
+                                        {
+                                            system_port_changes
+                                                .push((controller_i, system_port_selection));
+                                        };
                                     }
                                 });
-
-                            // Don't allow user to delete the only port.
-                            if num_system_ports > 1 {
-                                if ui.small_button("x").clicked() {
-                                    // You may rename a port to "" to automatically delete the port.
-                                    *port_state = String::from("");
-                                }
-                            }
+                            ui.end_row();
                         });
-                    }
-
-                    if ui.button("Add Port").clicked() {
-                        bus_state.system_ports.push(available_ports[0].clone());
-                    }
 
                     ui.separator();
                 }
-
-                if ui.button("Add Output Bus").clicked() {
-                    if let Some(new_bus) = config_feedback.new_audio_out_bus() {
-                        config_state.audio_out_busses.push(new_bus);
-                    }
+                if ui.button("Add Controller").clicked() {
+                    self.system_opts.add_midi_out_controller();
                 }
-
-                ui.separator();
-            }
-
-            ui.add_space(SPACING);
-
-            // User Audio Input Busses
-
-            if let Some(available_ports) = config_feedback.audio_in_port_options() {
-                ui.heading("Input Busses");
-
-                ui.separator();
-
-                for (bus_i, bus_state) in config_state.audio_in_busses.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut bus_state.id).hint_text("Enter Name"),
-                        );
-                        ui.label("Name");
-
-                        if ui.button("Remove").clicked() {
-                            // Mark the bus for deletion.
-                            bus_state.do_delete = true;
-                        }
-                    });
-
-                    let num_system_ports = bus_state.system_ports.len();
-
-                    for (port_i, port_state) in bus_state.system_ports.iter_mut().enumerate() {
-                        ui.horizontal(|ui| {
-                            // egui requires a unique id for each combo box
-                            let cb_id = format!("user_audio_in_bus_{}_{}", bus_i, port_i);
-
-                            egui::ComboBox::from_id_source(cb_id)
-                                .selected_text(&port_state)
-                                .show_ui(ui, |ui| {
-                                    for available_port in available_ports.iter() {
-                                        ui.selectable_value(
-                                            port_state,
-                                            available_port.clone(),
-                                            available_port,
-                                        );
-                                    }
-                                });
-
-                            // Don't allow user to delete the only port.
-                            if num_system_ports > 1 {
-                                if ui.small_button("x").clicked() {
-                                    // You may rename a port to "" to automatically delete the port.
-                                    *port_state = String::from("");
-                                }
-                            }
-                        });
-                    }
-
-                    if ui.button("Add Port").clicked() {
-                        bus_state.system_ports.push(available_ports[0].clone());
-                    }
-
-                    ui.separator();
+                for (controller_i, new_name) in name_changes.iter() {
+                    self.system_opts
+                        .rename_midi_out_controller(*controller_i, new_name);
                 }
-
-                if ui.button("Add Input Bus").clicked() {
-                    if let Some(new_bus) = config_feedback.new_audio_in_bus() {
-                        config_state.audio_in_busses.push(new_bus);
-                    }
+                for controller_i in remove_controllers.iter() {
+                    self.system_opts.remove_midi_out_controller(*controller_i);
                 }
-
-                ui.separator();
+                for (controller_i, new_system_port) in system_port_changes.iter() {
+                    self.system_opts
+                        .select_midi_out_controller_system_port(*controller_i, *new_system_port);
+                }
             }
         });
-        */
     }
 }
-
-/*
-fn midi_settings(
-    ui: &mut egui::Ui,
-    config_state: &mut DeviceIOHelperState,
-    config_feedback: &DeviceIOHelperFeedback,
-    status_msg: &mut String,
-    status_msg_open: &mut bool,
-) {
-    ui.horizontal(|ui| {
-        use rusty_daw_io::save_file::{load_midi_config_from_file, write_midi_config_to_file};
-
-        ui.heading("Midi Devices");
-
-        if ui.button("Refresh").clicked() {
-            config_state.do_refresh_midi_servers = true;
-        }
-
-        // Can't figure out how to right-align elements in egui. Use spacing as a hacky
-        // way to mimic this.
-        ui.add_space(180.0);
-
-        if let Some(midi_config) = config_feedback.midi_config() {
-            if ui.button("Save Midi Config").clicked() {
-                // Just using the root directory and a default filename, but you can use the system's
-                // file dialog instead.
-                match write_midi_config_to_file("test_midi_config.xml", midi_config) {
-                    Ok(()) => {
-                        *status_msg =
-                            String::from("Successfully saved config to \"test_midi_config.xml\"");
-                        println!("{}", status_msg);
-                    }
-                    Err(e) => {
-                        *status_msg = format!("Error saving config: {}", e);
-                        eprintln!("{}", status_msg);
-                    }
-                }
-
-                // Show the status message to the user as a pop-up window.
-                *status_msg_open = true;
-            }
-        } else {
-            ui.add(egui::Button::new("Save Midi Config").enabled(false));
-        }
-
-        if ui.button("Load Midi Config").clicked() {
-            // Just using the root directory and a default filename, but you can use the system's
-            // file dialog instead.
-            match load_midi_config_from_file("test_midi_config.xml") {
-                Ok(new_config) => {
-                    config_state.do_load_midi_config = Some(new_config);
-                }
-                Err(e) => {
-                    *status_msg = format!("Error loading config: {}", e);
-                    eprintln!("{}", status_msg);
-
-                    // Show the status message to the user as a pop-up window.
-                    *status_msg_open = true;
-                }
-            }
-        }
-    });
-
-    ui.separator();
-
-    ScrollArea::auto_sized().show(ui, |ui| {
-        // Midi server (driver model)
-
-        egui::ComboBox::from_label("Driver Model")
-            .selected_text(&config_feedback.midi_server_options()[config_state.midi_server_index])
-            .show_ui(ui, |ui| {
-                for (i, option) in config_feedback.midi_server_options().iter().enumerate() {
-                    ui.selectable_value(&mut config_state.midi_server_index, i, option);
-                }
-            });
-
-        ui.separator();
-
-        // Error States
-
-        if config_feedback.midi_server_unavailable() {
-            ui.label(format!(
-                "{} midi server is unavailable",
-                config_feedback.midi_server_options()[config_state.midi_server_index]
-            ));
-        }
-
-        ui.add_space(SPACING);
-
-        // User MIDI Input Controllers
-
-        ui.heading("Input Controllers");
-
-        ui.separator();
-
-        if let Some(available_ports) = config_feedback.midi_in_port_options() {
-            for (controller_i, controller_state) in
-                config_state.midi_in_controllers.iter_mut().enumerate()
-            {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut controller_state.id)
-                            .hint_text("Enter Name"),
-                    );
-                    ui.label("Name");
-
-                    if ui.button("Remove").clicked() {
-                        // Mark the controller for deletion.
-                        controller_state.do_delete = true;
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    // egui requires a unique id for each combo box
-                    let cb_id = format!("user_midi_in_controller_{}", controller_i);
-
-                    egui::ComboBox::from_id_source(cb_id)
-                        .selected_text(&controller_state.system_port)
-                        .show_ui(ui, |ui| {
-                            for option in available_ports.iter() {
-                                ui.selectable_value(
-                                    &mut controller_state.system_port,
-                                    option.clone(),
-                                    option,
-                                );
-                            }
-                        });
-
-                    ui.label("System Port");
-                });
-
-                ui.separator();
-            }
-
-            if ui.button("Add Input Controller").clicked() {
-                if let Some(new_controller) = config_feedback.new_midi_in_controller() {
-                    config_state.midi_in_controllers.push(new_controller);
-                }
-            }
-
-            ui.separator();
-        } else {
-            ui.label("No MIDI input devices were found");
-
-            ui.separator();
-        }
-
-        ui.add_space(SPACING);
-
-        // User Audio Outputs
-
-        ui.heading("Output Controllers");
-
-        ui.separator();
-
-        if let Some(available_ports) = config_feedback.midi_out_port_options() {
-            for (controller_i, controller_state) in
-                config_state.midi_out_controllers.iter_mut().enumerate()
-            {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut controller_state.id)
-                            .hint_text("Enter Name"),
-                    );
-                    ui.label("Name");
-
-                    if ui.button("Remove").clicked() {
-                        // Mark the controller for deletion.
-                        controller_state.do_delete = true;
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    // egui requires a unique id for each combo box
-                    let cb_id = format!("user_midi_out_controller_{}", controller_i);
-
-                    egui::ComboBox::from_id_source(cb_id)
-                        .selected_text(&controller_state.system_port)
-                        .show_ui(ui, |ui| {
-                            for option in available_ports.iter() {
-                                ui.selectable_value(
-                                    &mut controller_state.system_port,
-                                    option.clone(),
-                                    option,
-                                );
-                            }
-                        });
-
-                    ui.label("System Port");
-                });
-
-                ui.separator();
-            }
-
-            if ui.button("Add Output Controller").clicked() {
-                if let Some(new_controller) = config_feedback.new_midi_out_controller() {
-                    config_state.midi_out_controllers.push(new_controller);
-                }
-            }
-
-            ui.separator();
-        } else {
-            ui.label("No MIDI output devices were found");
-
-            ui.separator();
-        }
-    });
-}
-*/

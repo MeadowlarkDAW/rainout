@@ -293,15 +293,50 @@ impl SystemOptions {
 
     pub fn add_audio_in_bus(&mut self) {
         if self.display_state.audio_in_system_port_options.len() > 0 {
+            // Find the next available ID.
+            let mut id = String::from("Mic In");
+            let mut i = 1;
+            loop {
+                let mut is_unique = true;
+                for bus in self.display_state.audio_in_busses.iter() {
+                    if &id == &bus.id {
+                        is_unique = false;
+                        break;
+                    }
+                }
+                if is_unique {
+                    break;
+                } else {
+                    i += 1;
+                    id = format!("Mic In #{}", i);
+                }
+            }
+
+            // Find the next available port.
+            let mut next_port = self
+                .display_state
+                .audio_in_busses
+                .last()
+                .map(|b| {
+                    b.ports
+                        .last()
+                        .map(|p| p.current_system_port_index + 1)
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0);
+            if next_port >= self.display_state.audio_in_system_port_options.len() {
+                next_port = 0;
+            }
+
             self.display_state
                 .audio_in_busses
                 .push(AudioBusDisplayState {
-                    id: String::from("Mic In"),
+                    id,
                     ports: vec![SystemPortDisplayState {
-                        current_system_port_index: 0,
+                        current_system_port_index: next_port,
                         current_system_port_name: self.display_state.audio_in_system_port_options
-                            [0]
-                        .clone(),
+                            [next_port]
+                            .clone(),
                         can_remove: false,
                     }],
                     can_remove: true,
@@ -311,27 +346,63 @@ impl SystemOptions {
 
     pub fn add_audio_out_bus(&mut self) {
         if self.display_state.audio_out_system_port_options.len() > 0 {
-            let left_port = 0;
-            let right_port = 1.min(self.display_state.audio_out_system_port_options.len() - 1);
+            // Find the next available ID.
+            let mut id = String::from("Speakers Out");
+            let mut i = 1;
+            loop {
+                let mut is_unique = true;
+                for bus in self.display_state.audio_out_busses.iter() {
+                    if &id == &bus.id {
+                        is_unique = false;
+                        break;
+                    }
+                }
+                if is_unique {
+                    break;
+                } else {
+                    i += 1;
+                    id = format!("Speakers Out #{}", i);
+                }
+            }
+
+            // Find the next available ports.
+            let mut next_port_left = self
+                .display_state
+                .audio_out_busses
+                .last()
+                .map(|b| {
+                    b.ports
+                        .last()
+                        .map(|p| p.current_system_port_index + 1)
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0);
+            let mut next_port_right = next_port_left + 1;
+            if next_port_left >= self.display_state.audio_out_system_port_options.len() {
+                next_port_left = 0;
+            }
+            if next_port_right >= self.display_state.audio_out_system_port_options.len() {
+                next_port_right = 0;
+            }
 
             self.display_state
                 .audio_out_busses
                 .push(AudioBusDisplayState {
-                    id: String::from("Speakers Out"),
+                    id,
                     ports: vec![
                         SystemPortDisplayState {
-                            current_system_port_index: left_port,
+                            current_system_port_index: next_port_left,
                             current_system_port_name: self
                                 .display_state
-                                .audio_out_system_port_options[left_port]
+                                .audio_out_system_port_options[next_port_left]
                                 .clone(),
                             can_remove: true,
                         },
                         SystemPortDisplayState {
-                            current_system_port_index: right_port,
+                            current_system_port_index: next_port_right,
                             current_system_port_name: self
                                 .display_state
-                                .audio_out_system_port_options[right_port]
+                                .audio_out_system_port_options[next_port_right]
                                 .clone(),
                             can_remove: true,
                         },
@@ -399,9 +470,20 @@ impl SystemOptions {
     pub fn add_audio_in_bus_port(&mut self, bus_index: usize) {
         if self.display_state.audio_in_system_port_options.len() > 0 {
             if let Some(bus) = self.display_state.audio_in_busses.get_mut(bus_index) {
+                // Find the next available port.
+                let mut next_port = bus
+                    .ports
+                    .last()
+                    .map(|p| p.current_system_port_index + 1)
+                    .unwrap_or(0);
+                if next_port >= self.display_state.audio_in_system_port_options.len() {
+                    next_port = 0;
+                }
+
                 bus.ports.push(SystemPortDisplayState {
-                    current_system_port_index: 0,
-                    current_system_port_name: self.display_state.audio_in_system_port_options[0]
+                    current_system_port_index: next_port,
+                    current_system_port_name: self.display_state.audio_in_system_port_options
+                        [next_port]
                         .clone(),
                     can_remove: false,
                 });
@@ -419,9 +501,20 @@ impl SystemOptions {
     pub fn add_audio_out_bus_port(&mut self, bus_index: usize) {
         if self.display_state.audio_out_system_port_options.len() > 0 {
             if let Some(bus) = self.display_state.audio_out_busses.get_mut(bus_index) {
+                // Find the next available port.
+                let mut next_port = bus
+                    .ports
+                    .last()
+                    .map(|p| p.current_system_port_index + 1)
+                    .unwrap_or(0);
+                if next_port >= self.display_state.audio_out_system_port_options.len() {
+                    next_port = 0;
+                }
+
                 bus.ports.push(SystemPortDisplayState {
-                    current_system_port_index: 0,
-                    current_system_port_name: self.display_state.audio_out_system_port_options[0]
+                    current_system_port_index: next_port,
+                    current_system_port_name: self.display_state.audio_out_system_port_options
+                        [next_port]
                         .clone(),
                     can_remove: false,
                 });
@@ -515,13 +608,44 @@ impl SystemOptions {
 
     pub fn add_midi_in_controller(&mut self) {
         if self.display_state.midi_in_system_port_options.len() > 0 {
+            // Find the next available ID.
+            let mut id = String::from("Midi In");
+            let mut i = 1;
+            loop {
+                let mut is_unique = true;
+                for controller in self.display_state.midi_in_controllers.iter() {
+                    if &id == &controller.id {
+                        is_unique = false;
+                        break;
+                    }
+                }
+                if is_unique {
+                    break;
+                } else {
+                    i += 1;
+                    id = format!("Midi In #{}", i);
+                }
+            }
+
+            // Find the next available port.
+            let mut next_port = self
+                .display_state
+                .midi_in_controllers
+                .last()
+                .map(|c| c.system_port.current_system_port_index + 1)
+                .unwrap_or(0);
+            if next_port >= self.display_state.midi_in_system_port_options.len() {
+                next_port = 0;
+            }
+
             self.display_state
                 .midi_in_controllers
                 .push(MidiControllerDisplayState {
-                    id: String::from("Midi In"),
+                    id,
                     system_port: SystemPortDisplayState {
-                        current_system_port_index: 0,
-                        current_system_port_name: self.display_state.midi_in_system_port_options[0]
+                        current_system_port_index: next_port,
+                        current_system_port_name: self.display_state.midi_in_system_port_options
+                            [next_port]
                             .clone(),
                         can_remove: false,
                     },
@@ -531,15 +655,45 @@ impl SystemOptions {
 
     pub fn add_midi_out_controller(&mut self) {
         if self.display_state.midi_out_system_port_options.len() > 0 {
+            // Find the next available ID.
+            let mut id = String::from("Midi Out");
+            let mut i = 1;
+            loop {
+                let mut is_unique = true;
+                for controller in self.display_state.midi_out_controllers.iter() {
+                    if &id == &controller.id {
+                        is_unique = false;
+                        break;
+                    }
+                }
+                if is_unique {
+                    break;
+                } else {
+                    i += 1;
+                    id = format!("Midi Out #{}", i);
+                }
+            }
+
+            // Find the next available port.
+            let mut next_port = self
+                .display_state
+                .midi_out_controllers
+                .last()
+                .map(|c| c.system_port.current_system_port_index + 1)
+                .unwrap_or(0);
+            if next_port >= self.display_state.midi_out_system_port_options.len() {
+                next_port = 0;
+            }
+
             self.display_state
                 .midi_out_controllers
                 .push(MidiControllerDisplayState {
-                    id: String::from("Midi Out"),
+                    id,
                     system_port: SystemPortDisplayState {
-                        current_system_port_index: 0,
+                        current_system_port_index: next_port,
                         current_system_port_name: self.display_state.midi_out_system_port_options
-                            [0]
-                        .clone(),
+                            [next_port]
+                            .clone(),
                         can_remove: false,
                     },
                 });
@@ -963,7 +1117,7 @@ impl SystemOptions {
                     self.display_state
                         .audio_out_busses
                         .push(AudioBusDisplayState {
-                            id: String::from("Speaker Out"),
+                            id: String::from("Speakers Out"),
                             ports: vec![
                                 SystemPortDisplayState {
                                     current_system_port_index: device.default_out_port_left,
