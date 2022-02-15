@@ -28,21 +28,18 @@ Why not just fork `CPAL`?
         - [ ] Jack
         - [ ] Pipewire
         - [ ] Alsa (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
-        - [ ] Portaudio (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
+        - [ ] Pulseaudio (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
     - Mac
         - [ ] CoreAudio
         - [ ] Jack (Maybe, if it is stable enough on Mac.)
-        - [ ] Portaudio (Maybe, if it is stable enough on Mac.)
     - Window
         - [ ] WASAPI
-        - [ ] ASIO (reluctantly) (If there is a better solution, let me know because I would rather avoid this proprietary mess.)
+        - [ ] ASIO (reluctantly)
         - [ ] Jack (Maybe, if it is stable enough on Windows.)
-        - [ ] Portaudio (Maybe, if it is stable enough on Windows.)
 - Scan the available devices on the system, and present configuration options in a format that is intuitive to an end-user configuring devices inside a settings GUI.
 - Send all audio and midi streams into a single high-priority thread, taking advantage of native duplex devices when available. (Audio buffers will be presented as de-interlaced `f32` buffers).
 - Robust and graceful error handling, especially while the stream is running.
-- Save and load configurations to/from a config file.
-- Let the user create and name "busses" which are presented in the application's GUI and config files (I.e. showing the ports "focusrite-scarlett:input_1" and "focusrite-scarlett:input_2" as busses named "host mic" and "co-host mic", and showing the ports "focusrite-scarlett:output_1" and "focusrite-scarlett:output_2" as a single stereo bus named "speakers out"). This could arguably be handled by the application instead, but this could allow config files to be shared more easily, even across different applications that use `rusty-daw-io`.
+- Easily save and load configurations to/from a config file.
 - A system that will try to automatically create a good initial default configuration.
 
 # Later/Maybe Goals
@@ -64,8 +61,6 @@ Why not just fork `CPAL`?
     - There is just no point in my opinion in presenting any other sample format other than `f32` in such an API. These `f32` buffers will just be converted to/from the native sample format that the device wants behind the scenes.
 
 # API Design
-
-### ***Please note that the current code in this repo is outdated.***
 
 The API is divided into three stages: Enumerating the available devices, creating a config, and running the stream.
 
@@ -244,19 +239,17 @@ pub struct Config {
     /// Set this to `None` to automatically select the default device for the backend.
     pub audio_device: Option<String>,
 
-    /// The audio input busses to create/use from the device's ports. These are the "internal" busses
-    /// that appear to the user as list of available sources/sends in the application. This is not
-    /// necessarily the same as the actual names of the ports on the device.
+    /// The names of the audio input ports to use. The buffers presented in the process()
+    /// thread will appear in this exact same order.
     /// 
     /// Set this to `None` to automatically select the default port layout for the device.
-    pub audio_in_busses: Option<Vec<AudioBusConfig>>,
+    pub audio_in_ports: Option<Vec<String>>,
 
-    /// The audio output busses to create/use from the device's ports. These are the "internal" busses
-    /// that appear to the user as list of available sources/sends in the application. This is not
-    /// necessarily the same as the actual names of the ports on the device.
+    /// The names of the audio output ports to use. The buffers presented in the process()
+    /// thread will appear in this exact same order.
     /// 
     /// Set this to `None` to automatically select the default port layout for the device.
-    pub audio_out_busses: Option<Vec<AudioBusConfig>>,
+    pub audio_out_ports: Option<Vec<String>>,
 
     /// The sample rate to use.
     ///
@@ -280,46 +273,17 @@ pub struct MidiConfig {
     /// Set this to `None` to automatically select the default backend for the system.
     pub backend: Option<String>,
 
-    /// The midi input controllers to use.
+    /// The names of the input MIDI devices to use. The buffers presented in the process()
+    /// thread will appear in this exact same order.
     /// 
     /// Set this to `None` to use the default inputs for the backend.
-    pub in_controllers: Option<Vec<MidiControllerConfig>>,
+    pub in_controllers: Option<Vec<String>>,
 
-    /// The midi output controllers to use.
+    /// The names of the output MIDI devices to use. The buffers presented in the process()
+    /// thread will appear in this exact same order.
     /// 
     /// Set this to `None` to use the default outputs for the backend.
-    pub out_controllers: Option<Vec<MidiControllerConfig>>,
-}
-
-pub struct AudioBusConfig {
-    /// The ID to use for this bus. This ID is for the "internal" bus that appears to the user
-    /// as list of available sources/sends in the application. This is not necessarily the same
-    /// as the name of the actual ports of the device.
-    ///
-    /// Examples of IDs can include:
-    ///
-    /// * Realtek Device In
-    /// * Drums Mic
-    /// * Headphones Out
-    /// * Speakers Out
-    pub id: String,
-
-    /// The ports (of the system device) that this bus will be connected to. The buffers presented
-    /// in the process() thread will appear in this same order.
-    pub system_ports: Vec<String>,
-}
-
-pub struct MidiControllerConfig {
-    /// The ID to use for this controller. This ID is for the "internal" controller that appears to
-    /// the user as list of available sources/sends in the application. This is not necessarily the
-    /// same as the name of the actual system hardware device that this "internal" controller is
-    /// connected to.
-    /// 
-    /// Set this to `None` to use the system device name for this controller.
-    pub id: String,
-
-    /// The name of the MIDI device this controller is connected to.
-    pub system_device: String,
+    pub out_controllers: Option<Vec<String>>,
 }
 ```
 
@@ -371,6 +335,8 @@ pub trait ErrorHandler: 'static + Send + Sync {
     fn fatal_error(self, error: FatalStreamError);
 }
 
+// TODO: API of `StreamError` and `FatalStreamError`.
+
 // ---- Run Options -------------------------------------------------------------------
 
 // These are flags passed into the `run()` method that describe how the user wants the
@@ -386,7 +352,7 @@ pub struct RunOptions {
 
     audio_backend_not_found: NotFoundBehavior,
     audio_device_not_found: NotFoundBehavior,
-    audio_bus_config_error: AudioBusConfigErrorBehavior,
+    audio_port_not_found: AudioPortNotFoundBehavior,
     buffer_size_config_error: BufferSizeConfigErrorBehavior,
 
     midi_backend_not_found: NotFoundBehavior,
@@ -398,10 +364,10 @@ pub enum NotFoundBehavior {
     TryNextBest,
 }
 
-pub enum AudioBusConfigErrorBehavior {
+pub enum AudioPortNotFoundBehavior {
     ReturnWithError,
-    DiscardInvalidBusses,
-    DiscardAllBussesAndTryDefaults,
+    DiscardInvalidPorts,
+    UseEmptyBufferForInvalidPorts,
 }
 
 pub enum SampleRateConfigErrorBehavior {
@@ -418,8 +384,8 @@ pub enum BufferSizeConfigErrorBehavior {
 
 pub enum MidiDeviceNotFoundError {
     ReturnWithError,
-    DiscardInvalidControllers,
-    DiscardAllControllersAndTryDefault,
+    DiscardInvalidDevices,
+    UseEmptyBufferForInvalidDevices,
 }
 
 // ------------------------------------------------------------------------------------
@@ -451,21 +417,24 @@ pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
 
 impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     // Returns the actual configuration of the running stream.
+    //
+    // The user should also use this method to see if there were any errors
+    // with the configuration like a missing port or midi device.
     pub fn stream_info(&self) -> &StreamInfo {
         ...
     }
 
-    // The user can call this to change the audio bus configuration while the
+    // The user can call this to change the audio port configuration while the
     // audio thread is still running. Support for this will depend on the
     // backend.
     //
     // If the given config is invalid, an error will be returned with no
     // effect on the running audio thread.
-    pub fn change_audio_bus_config(
+    pub fn change_audio_port_config(
         &mut self,
-        audio_in_busses: Option<Vec<AudioBusConfig>>,
-        audio_out_busses: Option<Vec<AudioBusConfig>>
-    ) -> Result<(), ChangeAudioBusConfigError> {
+        audio_in_ports: Option<Vec<String>>,
+        audio_out_ports: Option<Vec<String>>,
+    ) -> Result<(), ChangeAudioPortConfigError> {
         ...
     }
 
@@ -482,9 +451,12 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
         ...
     }
 
+    // It may be possible to also add `change_sample_rate_config()` here, but
+    // I'm not sure how useful this would actually be.
+
     // Returns whether or not this backend supports changing the audio bus
     // configuration while the audio thread is running.
-    pub fn can_change_audio_bus_config(&self) -> bool {
+    pub fn can_change_audio_port_config(&self) -> bool {
         ...
     }
 
@@ -494,11 +466,11 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
         ...
     }
 }
+
+// TODO: API of `RunConfigErrorRunConfigError`, `ChangeAudioPortConfigError`,
+// and `ChangeBufferSizeConfigError`.
 ```
 
-# More Stuff
+# Demo Application
 
 In addition to the main API, we will also have a full-working demo application with a working settings GUI. This will probably be written in `egui`, but another UI toolkit could be used.
-
-We may also consider creating a standard for a config file that can be shared across different applications which use `rusty-daw-io`. This will likely use the TOML file format.
-

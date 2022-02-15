@@ -2,9 +2,9 @@
 name = "rusty-daw-io"
 version = "0.0.0"
 authors = ["Billy Messenger <BillyDM@protonmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT OR Apache-2.0"
-keywords = ["audio", "daw"]
+keywords = ["audio", "midi", "device", "hardware"]
 categories = ["multimedia::audio"]
 description = "IO handling for RustyDAW projects (placeholder)"
 documentation = "https://docs.rs/rusty-daw-io"
@@ -14,8 +14,8 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["save-file"]
-save-file = ["quick-xml"]
+default = ["jack-backend"]
+jack-backend = ["jack"]
 
 [workspace]
 members = [
@@ -24,10 +24,9 @@ members = [
 
 [dependencies]
 log = "0.4"
-quick-xml = { version = "0.22", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-jack = "0.7"
+jack = { version = "0.9", optional = true }
 
 [dev-dependencies]
-simple_logger = "1.11"
+simple_logger = "2.1"
