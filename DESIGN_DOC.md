@@ -72,26 +72,11 @@ The API is divided into three stages: Enumerating the available devices, creatin
 //
 // Calling these a second time will essentially "refresh" the list of available
 // devices.
-pub fn audio_backends() -> &[AudioBackendInfo] {
-    // Wrapping the underlying platform-specific code will work like this:
-    #[cfg(target_os = "linux")]
-    linux::audio_backends()
-
-    #[cfg(target_os = "macos")]
-    macos::audio_backends()
-
-    #[cfg(target_os = "windows")]
-    windows::audio_backends()
+pub fn audio_backends() -> Vec<AudioBackendInfo> {
+    ...
 }
-pub fn midi_backends() -> &[MidiBackendInfo] {
-    #[cfg(target_os = "linux")]
-    linux::midi_backends()
-
-    #[cfg(target_os = "macos")]
-    macos::midi_backends()
-
-    #[cfg(target_os = "windows")]
-    windows::midi_backends()
+pub fn midi_backends() -> Vec<MidiBackendInfo> {
+    ...
 }
 
 pub struct AudioBackendInfo {
@@ -156,13 +141,13 @@ pub struct AudioDeviceInfo {
 
     /// The supported range of fixed buffer/block sizes for this device. If the device
     /// doesn't support fixed-size buffers then this will be `None`.
-    pub buffer_size_range: Option<FixedBufferSizeRange>,
+    pub fixed_buffer_size_range: Option<FixedBufferSizeRange>,
 
-    /// The indexes of the default/preferred input ports for this audio device.
-    pub default_in_ports: DefaultChannelLayout,
+    /// The default channel layout of the input ports for this device.
+    pub default_input_layout: DefaultChannelLayout,
 
-    /// The indexes of the default/preferred output ports for this audio device.
-    pub default_out_ports: DefaultChannelLayout,
+    /// The default channel layout of the output ports for this device.
+    pub default_output_layout: DefaultChannelLayout,
 }
 
 pub struct FixedBufferSizeRange {
@@ -256,15 +241,26 @@ pub struct Config {
     /// Set this to `None` to use the default sample rate of the system device.
     pub sample_rate: Option<u32>,
     
-    /// The fixed buffer size to user for this audio device.
-    ///
-    /// Set this to `None` to use the default settings of the system device.
-    pub fixed_buffer_size: Option<u32>,
+    /// The buffer size configuration for this device.
+    pub buffer_size: AudioBufferSizeConfig,
 
     /// The configuration for MIDI devices.
     /// 
     /// Set this to `None` to use no MIDI devices in the stream.
     pub midi_config: Option<MidiConfig>,
+}
+
+pub struct AudioBufferSizeConfig {
+    /// If `Some`, then the backend will attempt to use a fixed size buffer of the
+    /// given size. If this is `None`, then the backend will attempt to use the default
+    /// fixed buffer size (if there is one).
+    pub try_fixed_buffer_size: Option<u32>,
+
+    /// If the backend fails to set a fixed buffer size from `try_fixed_buffer_size`,
+    /// then unfixed buffer sizes will be used instead. This number will be the
+    /// maximum size of a buffer that will be passed into the `process()` method in
+    /// that case.
+    pub fallback_max_buffer_size: u32,
 }
 
 pub struct MidiConfig {
@@ -345,11 +341,7 @@ pub trait ErrorHandler: 'static + Send + Sync {
 // Note the API of this section is still a work in progress. We will add/remove items
 // as we deem necessary.
 
-pub struct RunOptions {
-    // If Some, then the backend will use this name as the client name that appears
-    // in the audio server. This is only relevent for some backends like Jack.
-    use_application_name: Option<String>,
-
+pub struct ErrorBehavior {
     audio_backend_not_found: NotFoundBehavior,
     audio_device_not_found: NotFoundBehavior,
     audio_port_not_found: AudioPortNotFoundBehavior,
@@ -366,7 +358,6 @@ pub enum NotFoundBehavior {
 
 pub enum AudioPortNotFoundBehavior {
     ReturnWithError,
-    DiscardInvalidPorts,
     UseEmptyBufferForInvalidPorts,
 }
 
@@ -384,7 +375,6 @@ pub enum BufferSizeConfigErrorBehavior {
 
 pub enum MidiDeviceNotFoundError {
     ReturnWithError,
-    DiscardInvalidDevices,
     UseEmptyBufferForInvalidDevices,
 }
 
@@ -393,7 +383,10 @@ pub enum MidiDeviceNotFoundError {
 // Run the given config in an audio thread.
 pub fn run<P: ProcessHandler, E: ErrorHandler>((
     config: &Config,
-    options: &RunOptions,
+    // If Some, then the backend will use this name as the client name that appears
+    // in the audio server. This is only relevent for some backends like Jack.
+    use_application_name: Option<String>,
+    error_behavior: &ErrorBehavior,
     process_handler: P,
     error_handler: E,
 ) -> Result<StreamHandle<P, E>, RunConfigError> {
@@ -405,14 +398,7 @@ pub fn run<P: ProcessHandler, E: ErrorHandler>((
 // When this gets dropped, the stream should also automatically stop. This is the
 // intended way for the user to stop a stream.
 pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
-    #[cfg(target_os = "linux")]
-    os_handle: LinuxStreamHandle<P, E>,
-
-    #[cfg(target_os = "macos")]
-    os_handle: MacOSStreamHandle<P, E>,
-
-    #[cfg(target_os = "windows")]
-    os_handle: WindowsStreamHandle<P, E>,
+    ...
 }
 
 impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
