@@ -1,7 +1,7 @@
 use crate::error::{ChangeAudioBufferSizeError, ChangeAudioPortConfigError, RunConfigError};
 use crate::{
     AudioBackendInfo, AudioBufferSizeConfig, Config, ErrorBehavior, ErrorHandler, MidiBackendInfo,
-    ProcessHandler, StreamHandle, StreamInfo,
+    ProcessHandler, RunOptions, StreamHandle, StreamInfo,
 };
 
 pub fn audio_backends() -> Vec<AudioBackendInfo> {
@@ -22,7 +22,7 @@ pub fn sample_rate(config: &Config) -> Option<u32> {
 
 pub fn run<P: ProcessHandler, E: ErrorHandler>(
     config: &Config,
-    use_application_name: Option<String>,
+    options: &RunOptions,
     error_behavior: &ErrorBehavior,
     process_handler: P,
     error_handler: E,

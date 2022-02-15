@@ -3,7 +3,7 @@ use crate::error::{
     StreamError,
 };
 use crate::error_behavior::ErrorBehavior;
-use crate::{platform, AudioBufferSizeConfig, Config};
+use crate::{platform, AudioBufferSizeConfig, Config, ProcessInfo, StreamInfo};
 
 /// Get the estimated total latency of a particular configuration before running it.
 ///
@@ -30,7 +30,7 @@ pub trait ProcessHandler: 'static + Send {
     fn stream_changed(&mut self, stream_info: &StreamInfo);
 
     /// Process the current buffers. This will always be called on a realtime thread.
-    fn process(&mut self, proc_info: ProcessInfo);
+    fn process<'a>(&mut self, proc_info: ProcessInfo<'a>);
 }
 
 /// An error handler for a stream.
@@ -45,20 +45,35 @@ pub trait ErrorHandler: 'static + Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-pub struct StreamInfo {
-    // TODO
+pub struct RunOptions {
+    /// If `Some`, then the backend will use this name as the
+    /// client name that appears in the audio server. This is only relevent for some
+    /// backends like Jack.
+    pub use_application_name: Option<String>,
+
+    /// The maximum number of events a MIDI buffer can hold.
+    ///
+    /// By default this is set to `1024`.
+    pub midi_buffer_size: u32,
+
+    /// If true, then the backend will mark every input audio buffer that is
+    /// silent (all `0.0`s) before each call to `process()`.
+    ///
+    /// If false, then the backend won't do this check and every buffer will
+    /// be marked as not silent.
+    pub check_for_silent_inputs: bool,
 }
 
-pub struct ProcessInfo {
-    // TODO
+impl Default for RunOptions {
+    fn default() -> Self {
+        Self { use_application_name: None, midi_buffer_size: 1024, check_for_silent_inputs: false }
+    }
 }
 
 /// Run the given configuration in an audio thread.
 ///
 /// * `config`: The configuration to use.
-/// * `use_application_name`: If `Some`, then the backend will use this name as the
-/// client name that appears in the audio server. This is only relevent for some
-/// backends like Jack.
+/// * `use_application_name`:
 /// * `error_behavior`: How the system should respond to various errors.
 /// * `process_handler`: An instance of your process handler.
 /// * `error_handler`: An instance of your error handler.
@@ -67,12 +82,12 @@ pub struct ProcessInfo {
 /// thread was spawned.
 pub fn run<P: ProcessHandler, E: ErrorHandler>(
     config: &Config,
-    use_application_name: Option<String>,
+    options: &RunOptions,
     error_behavior: &ErrorBehavior,
     process_handler: P,
     error_handler: E,
 ) -> Result<StreamHandle<P, E>, RunConfigError> {
-    platform::run(config, use_application_name, error_behavior, process_handler, error_handler)
+    platform::run(config, options, error_behavior, process_handler, error_handler)
 }
 
 /// The handle to a running audio/midi stream.

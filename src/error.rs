@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::MAX_MIDI_MSG_SIZE;
+
 #[derive(Debug, Clone)]
 pub enum StreamError {
     // TODO
@@ -53,5 +55,31 @@ impl Error for ChangeAudioBufferSizeError {}
 impl fmt::Display for ChangeAudioBufferSizeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
+    }
+}
+
+#[derive(Debug)]
+pub enum MidiBufferPushError {
+    /// The buffer is full.
+    BufferFull,
+
+    /// The given midi event is too long.
+    EventTooLong(usize),
+}
+impl std::error::Error for MidiBufferPushError {}
+impl std::fmt::Display for MidiBufferPushError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MidiBufferPushError::BufferFull => {
+                write!(f, "Buffer is full",)
+            }
+            MidiBufferPushError::EventTooLong(len) => {
+                write!(
+                    f,
+                    "Event with length {} is longer than the maximum length {}",
+                    len, MAX_MIDI_MSG_SIZE,
+                )
+            }
+        }
     }
 }

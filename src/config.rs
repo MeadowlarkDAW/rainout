@@ -11,14 +11,18 @@ pub struct Config {
     /// Set this to `None` to automatically select the default/best device for the backend.
     pub audio_device: Option<String>,
 
-    /// The names of the audio input ports to use. The buffers presented in the `process()`
-    /// thread will appear in this exact same order.
+    /// The names of the audio input ports to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::audio_inputs` will appear in this exact same
+    /// order.
     ///
     /// Set this to `None` to automatically select the default input port layout for the device.
     pub audio_in_ports: Option<Vec<String>>,
 
-    /// The names of the audio output ports to use. The buffers presented in the `process()`
-    /// thread will appear in this exact same order.
+    /// The names of the audio output ports to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::audio_outputs` will appear in this exact same
+    /// order.
     ///
     /// Set this to `None` to automatically select the default output port layout for the device.
     pub audio_out_ports: Option<Vec<String>>,
@@ -60,15 +64,19 @@ pub struct MidiConfig {
     /// Set this to `None` to automatically select the default/best backend for the system.
     pub backend: Option<String>,
 
-    /// The names of the input MIDI devices to use. The buffers presented in the `process()`
-    /// thread will appear in this exact same order.
+    /// The names of the input MIDI devices to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::midi_inputs` will appear in this exact same
+    /// order.
     ///
     /// Set this to `None` to use the default input device for the backend.
-    pub in_controllers: Option<Vec<String>>,
+    pub in_devices: Option<Vec<String>>,
 
-    /// The names of the output MIDI devices to use. The buffers presented in the `process()`
-    /// thread will appear in this exact same order.
+    /// The names of the output MIDI devices to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::midi_outputs` will appear in this exact
+    /// same order.
     ///
     /// Set this to `None` to use the default output device for the backend.
-    pub out_controllers: Option<Vec<String>>,
+    pub out_devices: Option<Vec<String>>,
 }

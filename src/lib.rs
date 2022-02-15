@@ -15,7 +15,10 @@ use windows as platform;
 
 mod config;
 mod enumeration;
+mod midi_buffer;
+mod process_info;
 mod run;
+mod stream_info;
 
 pub mod error;
 pub mod error_behavior;
@@ -23,4 +26,7 @@ pub mod error_behavior;
 pub use config::*;
 pub use enumeration::*;
 pub use error_behavior::ErrorBehavior;
+pub use midi_buffer::*;
+pub use process_info::*;
 pub use run::*;
+pub use stream_info::*;
