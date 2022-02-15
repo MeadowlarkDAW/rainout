@@ -49,6 +49,8 @@ pub struct RunOptions {
     /// If `Some`, then the backend will use this name as the
     /// client name that appears in the audio server. This is only relevent for some
     /// backends like Jack.
+    ///
+    /// By default this is set to `None`.
     pub use_application_name: Option<String>,
 
     /// The maximum number of events a MIDI buffer can hold.
@@ -61,20 +63,29 @@ pub struct RunOptions {
     ///
     /// If false, then the backend won't do this check and every buffer will
     /// be marked as not silent.
+    ///
+    /// By default this is set to `false`.
     pub check_for_silent_inputs: bool,
+
+    /// How the system should respond to various errors.
+    pub error_behavior: ErrorBehavior,
 }
 
 impl Default for RunOptions {
     fn default() -> Self {
-        Self { use_application_name: None, midi_buffer_size: 1024, check_for_silent_inputs: false }
+        Self {
+            use_application_name: None,
+            midi_buffer_size: 1024,
+            check_for_silent_inputs: false,
+            error_behavior: ErrorBehavior::default(),
+        }
     }
 }
 
 /// Run the given configuration in an audio thread.
 ///
 /// * `config`: The configuration to use.
-/// * `use_application_name`:
-/// * `error_behavior`: How the system should respond to various errors.
+/// * `options`: Various options for the stream.
 /// * `process_handler`: An instance of your process handler.
 /// * `error_handler`: An instance of your error handler.
 ///
@@ -83,11 +94,10 @@ impl Default for RunOptions {
 pub fn run<P: ProcessHandler, E: ErrorHandler>(
     config: &Config,
     options: &RunOptions,
-    error_behavior: &ErrorBehavior,
     process_handler: P,
     error_handler: E,
 ) -> Result<StreamHandle<P, E>, RunConfigError> {
-    platform::run(config, options, error_behavior, process_handler, error_handler)
+    platform::run(config, options, process_handler, error_handler)
 }
 
 /// The handle to a running audio/midi stream.
