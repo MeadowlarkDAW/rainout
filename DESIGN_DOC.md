@@ -273,13 +273,13 @@ pub struct MidiConfig {
     /// thread will appear in this exact same order.
     /// 
     /// Set this to `None` to use the default inputs for the backend.
-    pub in_controllers: Option<Vec<String>>,
+    pub in_devices: Option<Vec<String>>,
 
     /// The names of the output MIDI devices to use. The buffers presented in the process()
     /// thread will appear in this exact same order.
     /// 
     /// Set this to `None` to use the default outputs for the backend.
-    pub out_controllers: Option<Vec<String>>,
+    pub out_devices: Option<Vec<String>>,
 }
 ```
 
@@ -316,10 +316,40 @@ pub trait ProcessHandler: 'static + Send {
     fn stream_changed(&mut self, stream_info: &StreamInfo);
 
     /// Process the current buffers. This will always be called on a realtime thread.
-    fn process(&mut self, proc_info: ProcessInfo);
+    fn process<'a>(&mut self, proc_info: ProcessInfo<'a>);
 }
 
-// TODO: API of `StreamInfo` and `ProcessInfo`.
+/// The audio and MIDI buffers for this process cycle.
+pub struct ProcessInfo<'a> {
+    /// The audio input buffers.
+    pub audio_inputs: &'a [&'a [f32]],
+
+    /// The audio output buffers.
+    pub audio_outputs: &'a [&'a mut [f32]],
+
+    /// The number of audio frames in this process cycle.
+    ///
+    /// It is gauranteed that every buffer in `audio_inputs` and
+    /// `audio_outputs` will have a length of at-least this size.
+    pub frames: usize,
+
+    /// For each audio input buffer in order, this will return true
+    /// if every sample in that buffer is `0.0`, false otherwise.
+    ///
+    /// This is only relevant if this stream was run with
+    /// `RunOptions::check_for_silent_inputs` set to true, which it
+    /// is not on by default. If `RunOptions::check_for_silent_inputs`
+    /// is false, then these values will always be false.
+    pub silent_audio_inputs: &'a [bool],
+
+    /// The MIDI input buffers.
+    pub midi_inputs: &'a [&'a MidiBuffer],
+
+    /// The MIDI output buffers.
+    pub midi_outputs: &'a [&'a mut MidiBuffer],
+}
+
+// (See code for the implementation of `StreamInfo`).
 
 pub trait ErrorHandler: 'static + Send + Sync {
     /// Called when a non-fatal error occurs (any error that does not require the audio
@@ -335,58 +365,53 @@ pub trait ErrorHandler: 'static + Send + Sync {
 
 // ---- Run Options -------------------------------------------------------------------
 
-// These are flags passed into the `run()` method that describe how the user wants the
-// stream to behave to certain errors.
+// Additional options passed into the `run()` method.
 
 // Note the API of this section is still a work in progress. We will add/remove items
 // as we deem necessary.
 
-pub struct ErrorBehavior {
-    audio_backend_not_found: NotFoundBehavior,
-    audio_device_not_found: NotFoundBehavior,
-    audio_port_not_found: AudioPortNotFoundBehavior,
-    buffer_size_config_error: BufferSizeConfigErrorBehavior,
+#[derive(Debug, Clone)]
+pub struct RunOptions {
+    /// If `Some`, then the backend will use this name as the
+    /// client name that appears in the audio server. This is only relevent for some
+    /// backends like Jack.
+    ///
+    /// By default this is set to `None`.
+    pub use_application_name: Option<String>,
 
-    midi_backend_not_found: NotFoundBehavior,
-    midi_device_not_found: MidiDeviceNotFoundError,
-}
+    /// The maximum number of events a MIDI buffer can hold.
+    ///
+    /// By default this is set to `1024`.
+    pub midi_buffer_size: u32,
 
-pub enum NotFoundBehavior {
-    ReturnWithError,
-    TryNextBest,
-}
+    /// If true, then the backend will mark every input audio buffer that is
+    /// silent (all `0.0`s) before each call to `process()`.
+    ///
+    /// If false, then the backend won't do this check and every buffer will
+    /// be marked as not silent.
+    ///
+    /// By default this is set to `false`.
+    pub check_for_silent_inputs: bool,
 
-pub enum AudioPortNotFoundBehavior {
-    ReturnWithError,
-    UseEmptyBufferForInvalidPorts,
-}
-
-pub enum SampleRateConfigErrorBehavior {
-    ReturnWithError,
-    TryNextBest,
-    TryNextBestWithMinMaxSR((u32, u32)),
-}
-
-pub enum BufferSizeConfigErrorBehavior {
-    ReturnWithError,
-    TryNextBest,
-    TryNextBestWithMinMaxSize((u32, u32)),
-}
-
-pub enum MidiDeviceNotFoundError {
-    ReturnWithError,
-    UseEmptyBufferForInvalidDevices,
+    /// Flags on how the system should respond to various errors.
+    /// (see the code for the current implementation of `ErrorBehavior`)
+    pub error_behavior: ErrorBehavior,
 }
 
 // ------------------------------------------------------------------------------------
 
-// Run the given config in an audio thread.
-pub fn run<P: ProcessHandler, E: ErrorHandler>((
+/// Run the given configuration in an audio thread.
+///
+/// * `config`: The configuration to use.
+/// * `options`: Various options for the stream.
+/// * `process_handler`: An instance of your process handler.
+/// * `error_handler`: An instance of your error handler.
+///
+/// If an error is returned, then it means the config failed to run and no audio
+/// thread was spawned.
+pub fn run<P: ProcessHandler, E: ErrorHandler>(
     config: &Config,
-    // If Some, then the backend will use this name as the client name that appears
-    // in the audio server. This is only relevent for some backends like Jack.
-    use_application_name: Option<String>,
-    error_behavior: &ErrorBehavior,
+    options: &RunOptions,
     process_handler: P,
     error_handler: E,
 ) -> Result<StreamHandle<P, E>, RunConfigError> {
