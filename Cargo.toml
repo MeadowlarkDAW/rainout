@@ -14,8 +14,10 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["jack-backend"]
-jack-backend = ["jack"]
+default = ["midi", "jack-linux"]
+midi = []
+jack-linux = ["jack"]
+asio = []
 
 [workspace]
 members = [

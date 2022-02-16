@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
+#[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,18 @@ impl fmt::Display for ChangeAudioBufferSizeError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ChangeMidiDeviceConfigError {
+    // TODO
+}
+impl Error for ChangeMidiDeviceConfigError {}
+impl fmt::Display for ChangeMidiDeviceConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+#[cfg(feature = "midi")]
 #[derive(Debug)]
 pub enum MidiBufferPushError {
     /// The buffer is full.
@@ -66,7 +79,9 @@ pub enum MidiBufferPushError {
     /// The given midi event is too long.
     EventTooLong(usize),
 }
+#[cfg(feature = "midi")]
 impl std::error::Error for MidiBufferPushError {}
+#[cfg(feature = "midi")]
 impl std::fmt::Display for MidiBufferPushError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

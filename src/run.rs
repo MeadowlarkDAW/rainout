@@ -3,21 +3,10 @@ use crate::error::{
     StreamError,
 };
 use crate::error_behavior::ErrorBehavior;
-use crate::{platform, AudioBufferSizeConfig, Config, ProcessInfo, StreamInfo};
+use crate::{platform, AudioBufferSizeConfig, Config, DeviceID, ProcessInfo, StreamInfo};
 
-/// Get the estimated total latency of a particular configuration before running it.
-///
-/// `None` will be returned if the latency is not known at this time.
-pub fn estimated_latency(config: &Config) -> Option<u32> {
-    platform::estimated_latency(config)
-}
-
-/// Get the sample rate of a particular configuration before running it.
-///
-/// `None` will be returned if the sample rate is not known at this time.
-pub fn sample_rate(config: &Config) -> Option<u32> {
-    platform::sample_rate(config)
-}
+#[cfg(feature = "midi")]
+use crate::error::ChangeMidiDeviceConfigError;
 
 /// A processor for a stream.
 pub trait ProcessHandler: 'static + Send {
@@ -53,6 +42,7 @@ pub struct RunOptions {
     /// By default this is set to `None`.
     pub use_application_name: Option<String>,
 
+    #[cfg(feature = "midi")]
     /// The maximum number of events a MIDI buffer can hold.
     ///
     /// By default this is set to `1024`.
@@ -75,7 +65,10 @@ impl Default for RunOptions {
     fn default() -> Self {
         Self {
             use_application_name: None,
+
+            #[cfg(feature = "midi")]
             midi_buffer_size: 1024,
+
             check_for_silent_inputs: false,
             error_behavior: ErrorBehavior::default(),
         }
@@ -140,6 +133,20 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
         self.platform_handle.change_audio_buffer_size_config(config)
     }
 
+    #[cfg(feature = "midi")]
+    /// Change the midi device configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
+    pub fn change_midi_device_config(
+        &mut self,
+        in_devices: Vec<DeviceID>,
+        out_devices: Vec<DeviceID>,
+    ) -> Result<(), ChangeMidiDeviceConfigError> {
+        self.platform_handle.change_midi_device_config(in_devices, out_devices)
+    }
+
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
@@ -153,5 +160,12 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     // configuration while the audio thread is running.
     pub fn can_change_audio_buffer_size_config(&self) -> bool {
         self.platform_handle.can_change_audio_buffer_size_config()
+    }
+
+    #[cfg(feature = "midi")]
+    /// Returns whether or not this backend supports changing the midi device
+    /// config while the audio thread is running.
+    pub fn can_change_midi_device_config(&self) -> bool {
+        self.platform_handle.can_change_midi_device_config()
     }
 }

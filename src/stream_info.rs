@@ -1,16 +1,21 @@
+use crate::{AudioBackend, DeviceID};
+
+#[cfg(feature = "midi")]
+use crate::MidiBackend;
+
 /// Information about a running stream.
 #[derive(Debug, Clone)]
 pub struct StreamInfo {
-    /// The name of the audio backend.
-    pub audio_backend: String,
+    /// The type of the audio backend.
+    pub audio_backend: AudioBackend,
 
     /// The version of the audio backend (if there is one available)
     ///
     /// (i.e. "1.2.10")
     pub audio_backend_version: Option<String>,
 
-    /// The name of the audio device.
-    pub audio_device: String,
+    /// The name/id of the audio device.
+    pub audio_device: DeviceID,
 
     /// The audio input ports in this stream.
     ///
@@ -30,8 +35,14 @@ pub struct StreamInfo {
     /// The audio buffer size.
     pub buffer_size: StreamAudioBufferSize,
 
-    /// The total latency of this stream in frames (if it is available)
-    pub latency: Option<u32>,
+    /// The total estimated latency of this stream in frames (if it is available)
+    pub estimated_latency: Option<u32>,
+
+    /// The information about the MIDI stream.
+    ///
+    /// If no MIDI stream is running, this will be `None`.
+    #[cfg(feature = "midi")]
+    pub midi_info: Option<MidiStreamInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,29 +67,30 @@ pub enum StreamAudioBufferSize {
     UnfixedWithMaxSize(u32),
 }
 
+#[cfg(feature = "midi")]
 /// MIDI information about a running stream.
 #[derive(Debug, Clone)]
 pub struct MidiStreamInfo {
-    /// The name of the MIDI backend.
-    pub audio_backend: String,
+    /// The type of the midi backend.
+    pub midi_backend: MidiBackend,
 
-    /// The names of the MIDI input devices.
+    /// The names & status of the MIDI input devices.
     ///
     /// The buffers presented in the `ProcessInfo::midi_inputs` will
     /// appear in this exact same order.
     pub in_devices: Vec<StreamMidiDeviceInfo>,
 
-    /// The names of the MIDI output devices.
+    /// The names & status of the MIDI output devices.
     ///
     /// The buffers presented in the `ProcessInfo::midi_outputs` will
     /// appear in this exact same order.
     pub out_devices: Vec<StreamMidiDeviceInfo>,
 }
 
+#[cfg(feature = "midi")]
 #[derive(Debug, Clone)]
 pub struct StreamMidiDeviceInfo {
-    /// The name of this MIDI device.
-    pub name: String,
+    pub id: DeviceID,
 
     /// If the system device was found and is working correctly, this will
     /// be true. Otherwise if the system device was not found or it is not

@@ -1,3 +1,4 @@
+#[cfg(feature = "midi")]
 use crate::MidiBuffer;
 
 /// The audio and MIDI buffers for this process cycle.
@@ -23,9 +24,11 @@ pub struct ProcessInfo<'a> {
     /// is false, then these values will always be false.
     pub silent_audio_inputs: &'a [bool],
 
+    #[cfg(feature = "midi")]
     /// The MIDI input buffers.
     pub midi_inputs: &'a [&'a MidiBuffer],
 
+    #[cfg(feature = "midi")]
     /// The MIDI output buffers.
     pub midi_outputs: &'a [&'a mut MidiBuffer],
 }

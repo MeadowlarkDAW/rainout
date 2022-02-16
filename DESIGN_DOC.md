@@ -67,63 +67,257 @@ The API is divided into three stages: Enumerating the available devices, creatin
 ## Device Enumeration API:
 
 ```rust
-// The user calls these to retrieve the list of available audio backends
-// and MIDI backends on the system. (i.e. Jack, Pipewire, WASAPI, CoreAudio, etc.)
-//
-// Calling these a second time will essentially "refresh" the list of available
-// devices.
-pub fn audio_backends() -> Vec<AudioBackendInfo> {
-    ...
-}
-pub fn midi_backends() -> Vec<MidiBackendInfo> {
+pub struct DeviceEnumerator {
     ...
 }
 
+impl DeviceEnumerator {
+    pub fn new() -> Result<Self, ()> {
+        ...
+    }
+
+    /// Returns the available audio backends for this platform.
+    pub fn available_audio_backends(&self) -> &'static [AudioBackend] {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Returns the available midi backends for this platform.
+    pub fn available_midi_backends(&self) -> &'static [MidiBackend] {
+        ...
+    }
+
+    /// Get information about a particular audio backend.
+    ///
+    /// This will update the list of available devices as well as the the
+    /// status of whether or not this backend is running.
+    ///
+    /// This will return an error if the backend is not available on this system.
+    pub fn enumerate_audio_backend(
+        &mut self,
+        backend: AudioBackend,
+    ) -> Result<AudioBackendInfo, ()> {
+        ...
+    }
+
+    /// Get information about a particular audio device.
+    ///
+    /// This will return an error if the given device was not found.
+    pub fn enumerate_audio_device(
+        &mut self,
+        backend: AudioBackend,
+        device_id: &DeviceID,
+    ) -> Result<AudioDeviceInfo, ()> {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Get information about a particular midi backend.
+    ///
+    /// This will update the list of available devices as well as the the
+    /// status of whether or not this backend is running.
+    ///
+    /// This will return an error if the backend is not available on this system.
+    pub fn enumerate_midi_backend(&mut self, backend: MidiBackend) -> Result<MidiBackendInfo, ()> {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Get information about a particular midi device.
+    ///
+    /// This will return an error if the given device was not found.
+    pub fn enumerate_midi_device(
+        &mut self,
+        backend: MidiBackend,
+        device_id: &DeviceID,
+    ) -> Result<MidiDeviceInfo, ()> {
+        ...
+    }
+
+    /// Enumerate through each backend to find the preferred/best default audio
+    /// backend for this system.
+    ///
+    /// If a higher priority backend does not have any available devices, then
+    /// this will try to return the next best backend that does have an
+    /// available device.
+    ///
+    /// This does not enumerate through the devices in each backend, just the
+    /// names of each device.
+    pub fn find_preferred_audio_backend(&mut self) -> AudioBackend {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Enumerate through each backend to find the preferred/best default midi
+    /// backend for this system.
+    ///
+    /// If a higher priority backend does not have any available devices, then
+    /// this will try to return the next best backend that does have an
+    /// available device.
+    ///
+    /// This does not enumerate through the devices in each backend, just the
+    /// names of each device.
+    pub fn find_preferred_midi_backend(&mut self) -> MidiBackend {
+        ...
+    }
+
+    /// Enumerate through each audio device to find the preferred/best default audio
+    /// device for this backend.
+    ///
+    /// This process can be slow. Try to use `AudioBackendInfo::preferred_device`
+    /// before calling this method.
+    pub fn find_preferred_audio_device(
+        &mut self,
+        backend: AudioBackend,
+    ) -> Option<AudioDeviceInfo> {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Enumerate through each midi device to find the preferred/best default midi
+    /// device for this backend.
+    ///
+    /// This process can be slow. Try to use `MidiBackendInfo::preferred_in_device` and
+    /// `MidiBackendInfo::preferred_out_device` before calling this method.
+    pub fn find_preferred_midi_device(&mut self, backend: MidiBackend) -> Option<MidiDeviceInfo> {
+        ...
+    }
+
+    /// Get the estimated total latency of a particular configuration before running it.
+    ///
+    /// `None` will be returned if the latency is not known at this time or if the
+    /// given config is invalid.
+    pub fn estimated_latency(&self, config: &Config) -> Option<u32> {
+        ...
+    }
+
+    /// Get the sample rate of a particular configuration before running it.
+    ///
+    /// `None` will be returned if the sample rate is not known at this time or if the
+    /// given config is invalid.
+    pub fn sample_rate(&self, config: &Config) -> Option<u32> {
+        ...
+    }
+}
+
+/// Information about a particular audio backend, including a list of the
+/// available devices.
+#[derive(Debug, Clone)]
 pub struct AudioBackendInfo {
-    /// The name of this backend (i.e. Jack, Pipewire, WASAPI, CoreAudio, etc.)
-    pub name: String,
+    /// The type of backend.
+    pub backend: AudioBackend,
 
-    /// If true, then it means this backend is the default/preferred backend for
-    /// the given system. Only one item in the `audio_backends()` list will have
-    /// this set to true.
-    pub is_default: bool,
-
-    /// The version of this backend (if there is one)
+    /// The version of this backend (if there is one available)
+    ///
+    /// (i.e. "1.2.10")
     pub version: Option<String>,
 
-    /// The devices that are available in this backend.
-    /// 
+    /// If this is true, then it means this backend is running on this system.
+    /// (For example, if this backend is Jack and the Jack server is not currently
+    /// running on the system, then this will be false.)
+    pub running: bool,
+
+    /// The names/identifiers of the devices that are available in this backend.
+    ///
     /// Please note that these are not necessarily each physical device in the
     /// system. For example, in backends like Jack and CoreAudio, the whole system
     /// acts like a single "duplex device" which is the audio server.
-    pub devices: Vec<AudioDeviceInfo>,
+    pub devices: Vec<DeviceID>,
 
-    /// If this is true, then it means it is relevant to actually show the available
-    /// devices as a list to select from in a settings GUI.
-    /// 
-    /// In backends like Jack and CoreAudio which set this to false, there is only
-    /// ever one "systemwide duplex device" which is the audio server, and showing
-    /// this information in a settings GUI is irrelevant.
-    pub devices_are_relevant: bool,
-
-    /// If this is true, then it means this backend is available and running on
-    /// this system. (For example, if this backend is Jack and the Jack server is
-    /// not currently running on the system, then this will be false.)
-    pub available: bool,
+    /// The preferred/best default device for this backend.
+    ///
+    /// This will be `None` if the preferred device is not known at this time.
+    pub preferred_device: Option<DeviceID>,
 }
 
-/// The info about a particular audio device.
-pub struct AudioDeviceInfo {
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceID {
     /// The name of this device.
-    /// 
-    /// Note if there are multiple devices with the same name then a number should
-    /// be appended to it. (i.e. "Interface, "Interface #2")
     pub name: String,
 
-    /// If true, then it means this device is the default/preferred device for
-    /// the given backend. Only one device in the backend's list will have this set
-    /// to true.
-    pub is_default: bool,
+    /// The unique identifier of this device (if one is available).
+    ///
+    /// This is usually more reliable than just using the name of
+    /// the device.
+    pub unique_id: Option<String>,
+}
+
+/// An audio backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioBackend {
+    /// Pipewire on Linux
+    Pipewire,
+    #[cfg(feature = "jack-linux")]
+    /// Jack on Linux
+    JackLinux,
+    #[cfg(feature = "alsa")]
+    /// Alsa on Linux
+    Alsa,
+    #[cfg(feature = "pulseaudio")]
+    /// Pulseaudio on Linux
+    Pulseaudio,
+    /// CoreAudio on Mac
+    CoreAudio,
+    #[cfg(feature = "jack-macos")]
+    /// Jack on MacOS
+    JackMacOS,
+    /// WASAPI on Windows
+    Wasapi,
+    #[cfg(feature = "asio")]
+    /// ASIO on Windows
+    Asio,
+    #[cfg(feature = "jack-windows")]
+    /// Jack on Windows
+    JackWindows,
+}
+
+impl AudioBackend {
+    /// If this is true, then it means it is relevant to actually show the available
+    /// devices as a list to select from in a settings GUI.
+    ///
+    /// In backends like Jack and CoreAudio which set this to false, there is only
+    /// ever one "system-wide duplex device" which is the audio server itself, and
+    /// thus showing this information in a settings GUI is irrelevant.
+    pub fn devices_are_relevant(&self) -> bool {
+        ...
+    }
+}
+
+#[cfg(feature = "midi")]
+/// A midi backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MidiBackend {
+    /// Pipewire on Linux
+    Pipewire,
+    #[cfg(feature = "jack-linux")]
+    /// Jack on Linux
+    JackLinux,
+    #[cfg(feature = "alsa")]
+    /// Alsa on Linux
+    Alsa,
+    #[cfg(feature = "pulseaudio")]
+    /// Pulseaudio on Linux
+    Pulseaudio,
+    /// CoreAudio on Mac
+    CoreAudio,
+    #[cfg(feature = "jack-macos")]
+    /// Jack on MacOS
+    JackMacOS,
+    /// WASAPI on Windows
+    Wasapi,
+    #[cfg(feature = "asio")]
+    /// ASIO on Windows
+    Asio,
+    #[cfg(feature = "jack-windows")]
+    /// Jack on Windows
+    JackWindows,
+}
+
+/// Information about a particular audio device, including all its available
+/// configurations.
+#[derive(Debug, Clone)]
+pub struct AudioDeviceInfo {
+    pub id: DeviceID,
 
     /// The names of the available input ports (one port per channel) on this device
     /// (i.e. "mic_1", "mic_2", "system_input", etc.)
@@ -134,13 +328,22 @@ pub struct AudioDeviceInfo {
     pub out_ports: Vec<String>,
 
     /// The available sample rates for this device.
+    ///
+    /// This is irrelevant for ASIO devices because the buffer size is configured
+    /// through the configuration GUI application for that device.
     pub sample_rates: Vec<u32>,
 
     /// The default/preferred sample rate for this audio device.
+    ///
+    /// This is irrelevant for ASIO devices because the buffer size is configured
+    /// through the configuration GUI application for that device.
     pub default_sample_rate: u32,
 
     /// The supported range of fixed buffer/block sizes for this device. If the device
     /// doesn't support fixed-size buffers then this will be `None`.
+    ///
+    /// This is irrelevant for ASIO devices because the buffer size is configured
+    /// through the configuration GUI application for that device.
     pub fixed_buffer_size_range: Option<FixedBufferSizeRange>,
 
     /// The default channel layout of the input ports for this device.
@@ -148,63 +351,111 @@ pub struct AudioDeviceInfo {
 
     /// The default channel layout of the output ports for this device.
     pub default_output_layout: DefaultChannelLayout,
+
+    #[cfg(feature = "asio")]
+    /// If this audio device is an ASIO device, then this will contain extra
+    /// information about the device.
+    pub asio_info: Option<AsioDeviceInfo>,
 }
 
+#[cfg(feature = "asio")]
+#[derive(Debug, Clone)]
+pub struct AsioDeviceInfo {
+    /// The path to the configuration GUI application for the device.
+    pub config_gui_path: std::path::PathBuf,
+
+    /// The sample rate that has been configured for this device.
+    ///
+    /// You will need to re-enumerate this device to get the new sample
+    /// rate after configuring through the device's configuration GUI
+    /// application.
+    pub sample_rate: u32,
+
+    /// The fixed buffer size that has been configured for this device.
+    ///
+    /// You will need to re-enumerate this device to get the new sample
+    /// rate after configuring through the device's configuration GUI
+    /// application.
+    pub fixed_buffer_size: u32,
+}
+
+/// The range of possible fixed sizes of buffers/blocks for an audio device.
+#[derive(Debug, Clone)]
 pub struct FixedBufferSizeRange {
-    // The minimum block size (inclusive)
+    /// The minimum buffer/block size (inclusive)
     pub min: u32,
-    // The maximum block size (inclusive)
+    /// The maximum buffer/block size (inclusive)
     pub max: u32,
 
-    // If this is `true` then that means the device only supports fixed block sizes
-    // between `min` and `max` that are a power of 2.
+    /// If this is `true` then it means the device only supports fixed buffer/block
+    /// sizes between `min` and `max` that are a power of 2.
     pub must_be_power_of_2: bool,
 
-    // The default/preferred fixed buffer size for this device.
+    /// The default/preferred fixed buffer size for this device.
     pub default: u32,
 }
 
-// These contain the "indexes" of the ports assigned to each channel.
+/// The default channel layout of the ports for an audio device.
+///
+/// These include the index of each port for each channel.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
 pub enum DefaultChannelLayout {
+    /// The device has not specified the default channel layout of its ports.
     Unspecified,
+
     Mono(usize),
-    Stereo { left: usize, right: usize },
-    Surround51 { center: usize, left: usize, right: usize, y1: usize, y2: usize },
-    ...
+    Stereo {
+        left: usize,
+        right: usize,
+    },
+
+    // TODO: More channel layouts
 }
 
+#[cfg(feature = "midi")]
+/// Information about a particular midi backend, including a list of the
+/// available devices.
+#[derive(Debug, Clone)]
 pub struct MidiBackendInfo {
-    // The name of this backend (i.e. Jack, Pipewire, WASAPI, CoreAudio, etc.)
-    pub name: String,
+    /// The type of backend.
+    pub backend: MidiBackend,
 
-    // If true, then it means this backend is the default/preferred backend for
-    // the given system. Only one item in the `audio_backends()` list will have
-    // set this to true.
-    pub is_default: bool,
-
-    // The version of this backend (if there is one)
+    /// The version of this backend (if there is one available)
+    ///
+    /// (i.e. "1.2.10")
     pub version: Option<String>,
 
-    // The list of available input MIDI devices
-    pub in_devices: Vec<MidiDeviceInfo>,
+    /// If this is true, then it means this backend is running on this system.
+    /// (For example, if this backend is Jack and the Jack server is not currently
+    /// running on the system, then this will be false.)
+    pub running: bool,
 
-    // The list of available output MIDI devices
-    pub out_devices: Vec<MidiDeviceInfo>,
+    /// The list of available input MIDI devices
+    pub in_devices: Vec<DeviceID>,
 
-    // If this is true, then it means this backend is available and running on
-    // this system. (For example, if this backend is Jack and the Jack server is
-    // not currently running on the system, then this will be false.)
-    pub available: bool,
+    /// The list of available output MIDI devices
+    pub out_devices: Vec<DeviceID>,
+
+    /// The preferred/best default input device for this backend.
+    ///
+    /// This will be `None` if the preferred device is not known at this time.
+    pub preferred_in_device: Option<DeviceID>,
+
+    /// The preferred/best default output device for this backend.
+    ///
+    /// This will be `None` if the preferred device is not known at this time.
+    pub preferred_out_device: Option<DeviceID>,
 }
 
+#[cfg(feature = "midi")]
+/// Information about a particular midi device, including all its available
+/// configurations.
+#[derive(Debug, Clone)]
 pub struct MidiDeviceInfo {
-    // The name of this device
-    pub name: String,
+    pub id: DeviceID,
 
-    // If true, then it means this device is the default/preferred device for
-    // the given backend. Only one input and one output device in the backend's
-    // list will have this set to true.
-    pub is_default: bool,
+    // TODO: More information about the MIDI device
 }
 ```
 
@@ -213,43 +464,42 @@ pub struct MidiDeviceInfo {
 This is the API for the "configuration". The user constructs this configuration in whatever method they choose (from a settings GUI or a config file) and sends it to this crate to be ran.
 
 ```rust
+/// A full configuration of audio and midi devices to connect to.
+#[derive(Debug, Clone)]
 pub struct Config {
-    /// The name of the audio backend to use.
-    /// 
-    /// Set this to `None` to automatically select the default backend for the system.
-    pub audio_backend: Option<String>,
+    /// The type of the audio backend to use.
+    pub audio_backend: AudioBackend,
 
-    /// The name of the audio device to use.
-    /// 
-    /// Set this to `None` to automatically select the default device for the backend.
-    pub audio_device: Option<String>,
+    /// The ID of the audio device to use.
+    pub audio_device: DeviceID,
 
-    /// The names of the audio input ports to use. The buffers presented in the process()
-    /// thread will appear in this exact same order.
-    /// 
-    /// Set this to `None` to automatically select the default port layout for the device.
-    pub audio_in_ports: Option<Vec<String>>,
+    /// The names of the audio input ports to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::audio_inputs` will appear in this exact same
+    /// order.
+    pub audio_in_ports: Vec<String>,
 
-    /// The names of the audio output ports to use. The buffers presented in the process()
-    /// thread will appear in this exact same order.
-    /// 
-    /// Set this to `None` to automatically select the default port layout for the device.
-    pub audio_out_ports: Option<Vec<String>>,
+    /// The names of the audio output ports to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::audio_outputs` will appear in this exact same
+    /// order.
+    pub audio_out_ports: Vec<String>,
 
     /// The sample rate to use.
-    ///
-    /// Set this to `None` to use the default sample rate of the system device.
-    pub sample_rate: Option<u32>,
-    
+    pub sample_rate: u32,
+
     /// The buffer size configuration for this device.
     pub buffer_size: AudioBufferSizeConfig,
 
+    #[cfg(feature = "midi")]
     /// The configuration for MIDI devices.
-    /// 
+    ///
     /// Set this to `None` to use no MIDI devices in the stream.
     pub midi_config: Option<MidiConfig>,
 }
 
+/// The buffer size configuration for an audio device.
+#[derive(Debug, Clone, Copy)]
 pub struct AudioBufferSizeConfig {
     /// If `Some`, then the backend will attempt to use a fixed size buffer of the
     /// given size. If this is `None`, then the backend will attempt to use the default
@@ -263,23 +513,24 @@ pub struct AudioBufferSizeConfig {
     pub fallback_max_buffer_size: u32,
 }
 
+#[cfg(feature = "midi")]
+/// A full configuration of midi devices to connect to.
+#[derive(Debug, Clone)]
 pub struct MidiConfig {
-    /// The name of the MIDI backend to use.
-    /// 
-    /// Set this to `None` to automatically select the default backend for the system.
-    pub backend: Option<String>,
+    /// The type of the audio backend to use.
+    pub backend: MidiBackend,
 
-    /// The names of the input MIDI devices to use. The buffers presented in the process()
-    /// thread will appear in this exact same order.
-    /// 
-    /// Set this to `None` to use the default inputs for the backend.
-    pub in_devices: Option<Vec<String>>,
+    /// The IDs of the input MIDI devices to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::midi_inputs` will appear in this exact same
+    /// order.
+    pub in_devices: Vec<DeviceID>,
 
-    /// The names of the output MIDI devices to use. The buffers presented in the process()
-    /// thread will appear in this exact same order.
-    /// 
-    /// Set this to `None` to use the default outputs for the backend.
-    pub out_devices: Option<Vec<String>>,
+    /// The IDs of the output MIDI devices to use.
+    ///
+    /// The buffers presented in the `ProcessInfo::midi_outputs` will appear in this exact
+    /// same order.
+    pub out_devices: Vec<DeviceID>,
 }
 ```
 
@@ -288,27 +539,10 @@ pub struct MidiConfig {
 The user sends a config to this API to run it.
 
 ```rust
-// The user can call this to get the estimated total latency of a particular
-// configuration before running it.
-//
-// `None` will be returned if the latency is not known at this time.
-pub fn estimated_latency(config: &Config) -> Option<u32> {
-    ...
-}
-
-// The user calls this to get the sample rate of a particular configuration
-// before running it.
-//
-// `None` will be returned if the sample rate is not known at this time.
-pub fn sample_rate(config: &Config) -> Option<u32> {
-    ...
-}
-
-// The user derives this trait for their own custom struct. These methods get called in
-// the `run()` method.
+/// A processor for a stream.
 pub trait ProcessHandler: 'static + Send {
-    /// Initialize/allocate any buffers here. This will only be called once
-    /// on creation.
+    /// Initialize/allocate any buffers here. This will only be called once on
+    /// creation.
     fn init(&mut self, stream_info: &StreamInfo);
 
     /// This gets called if the user made a change to the configuration that does not
@@ -319,38 +553,9 @@ pub trait ProcessHandler: 'static + Send {
     fn process<'a>(&mut self, proc_info: ProcessInfo<'a>);
 }
 
-/// The audio and MIDI buffers for this process cycle.
-pub struct ProcessInfo<'a> {
-    /// The audio input buffers.
-    pub audio_inputs: &'a [&'a [f32]],
+// See code in the repo for the implementations of `StreamInfo` and `ProcessInfo`.
 
-    /// The audio output buffers.
-    pub audio_outputs: &'a [&'a mut [f32]],
-
-    /// The number of audio frames in this process cycle.
-    ///
-    /// It is gauranteed that every buffer in `audio_inputs` and
-    /// `audio_outputs` will have a length of at-least this size.
-    pub frames: usize,
-
-    /// For each audio input buffer in order, this will return true
-    /// if every sample in that buffer is `0.0`, false otherwise.
-    ///
-    /// This is only relevant if this stream was run with
-    /// `RunOptions::check_for_silent_inputs` set to true, which it
-    /// is not on by default. If `RunOptions::check_for_silent_inputs`
-    /// is false, then these values will always be false.
-    pub silent_audio_inputs: &'a [bool],
-
-    /// The MIDI input buffers.
-    pub midi_inputs: &'a [&'a MidiBuffer],
-
-    /// The MIDI output buffers.
-    pub midi_outputs: &'a [&'a mut MidiBuffer],
-}
-
-// (See code for the implementation of `StreamInfo`).
-
+/// An error handler for a stream.
 pub trait ErrorHandler: 'static + Send + Sync {
     /// Called when a non-fatal error occurs (any error that does not require the audio
     /// thread to restart).
@@ -361,14 +566,7 @@ pub trait ErrorHandler: 'static + Send + Sync {
     fn fatal_error(self, error: FatalStreamError);
 }
 
-// TODO: API of `StreamError` and `FatalStreamError`.
-
-// ---- Run Options -------------------------------------------------------------------
-
-// Additional options passed into the `run()` method.
-
-// Note the API of this section is still a work in progress. We will add/remove items
-// as we deem necessary.
+// TODO: Implementations of `StreamError` and `FatalStreamError`.
 
 #[derive(Debug, Clone)]
 pub struct RunOptions {
@@ -379,6 +577,7 @@ pub struct RunOptions {
     /// By default this is set to `None`.
     pub use_application_name: Option<String>,
 
+    #[cfg(feature = "midi")]
     /// The maximum number of events a MIDI buffer can hold.
     ///
     /// By default this is set to `1024`.
@@ -393,12 +592,9 @@ pub struct RunOptions {
     /// By default this is set to `false`.
     pub check_for_silent_inputs: bool,
 
-    /// Flags on how the system should respond to various errors.
-    /// (see the code for the current implementation of `ErrorBehavior`)
+    /// How the system should respond to various errors.
     pub error_behavior: ErrorBehavior,
 }
-
-// ------------------------------------------------------------------------------------
 
 /// Run the given configuration in an audio thread.
 ///
@@ -415,32 +611,29 @@ pub fn run<P: ProcessHandler, E: ErrorHandler>(
     process_handler: P,
     error_handler: E,
 ) -> Result<StreamHandle<P, E>, RunConfigError> {
-    ...
+    platform::run(config, options, process_handler, error_handler)
 }
 
-// This struct contains a handle to the actual stream.
-//
-// When this gets dropped, the stream should also automatically stop. This is the
-// intended way for the user to stop a stream.
+/// The handle to a running audio/midi stream.
+///
+// When this gets dropped, the stream (audio thread) will automatically stop. This
+/// is the intended method for stopping a stream.
 pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
     ...
 }
 
 impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
-    // Returns the actual configuration of the running stream.
-    //
-    // The user should also use this method to see if there were any errors
-    // with the configuration like a missing port or midi device.
+    /// Returns the actual configuration of the running stream. This may differ
+    /// from the configuration passed into the `run()` method.
     pub fn stream_info(&self) -> &StreamInfo {
         ...
     }
 
-    // The user can call this to change the audio port configuration while the
-    // audio thread is still running. Support for this will depend on the
-    // backend.
-    //
-    // If the given config is invalid, an error will be returned with no
-    // effect on the running audio thread.
+    /// Change the audio port configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
     pub fn change_audio_port_config(
         &mut self,
         audio_in_ports: Option<Vec<String>>,
@@ -449,37 +642,57 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
         ...
     }
 
-    // The user can call this to change the buffer size configuration while the
-    // audio thread is still running. Support for this will depend on the
-    // backend.
-    //
-    // If the given config is invalid, an error will be returned with no
-    // effect on the running audio thread.
-    pub fn change_buffer_size_config(
+    /// Change the buffer size configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
+    pub fn change_audio_buffer_size_config(
         &mut self,
-        buffer_size: Option<u32>,
-    ) -> Result<(), ChangeBufferSizeConfigError> {
+        config: AudioBufferSizeConfig,
+    ) -> Result<(), ChangeAudioBufferSizeError> {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Change the midi device configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
+    pub fn change_midi_device_config(
+        &mut self,
+        in_devices: Vec<DeviceID>,
+        out_devices: Vec<DeviceID>,
+    ) -> Result<(), ChangeMidiDeviceConfigError> {
         ...
     }
 
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
-    // Returns whether or not this backend supports changing the audio bus
-    // configuration while the audio thread is running.
+    /// Returns whether or not this backend supports changing the audio bus
+    /// configuration while the audio thread is running.
     pub fn can_change_audio_port_config(&self) -> bool {
         ...
     }
 
     // Returns whether or not this backend supports changing the buffer size
     // configuration while the audio thread is running.
-    pub fn can_change_buffer_size_config(&self) -> bool {
+    pub fn can_change_audio_buffer_size_config(&self) -> bool {
+        ...
+    }
+
+    #[cfg(feature = "midi")]
+    /// Returns whether or not this backend supports changing the midi device
+    /// config while the audio thread is running.
+    pub fn can_change_midi_device_config(&self) -> bool {
         ...
     }
 }
 
-// TODO: API of `RunConfigErrorRunConfigError`, `ChangeAudioPortConfigError`,
-// and `ChangeBufferSizeConfigError`.
+// TODO: Implementations of `RunConfigErrorRunConfigError`, `ChangeAudioPortConfigError`,
+// and `ChangeBufferSizeConfigError`, and `ChangeMidiDeviceConfigError`.
 ```
 
 # Demo Application

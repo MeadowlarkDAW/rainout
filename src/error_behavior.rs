@@ -7,7 +7,9 @@ pub struct ErrorBehavior {
     pub audio_port_not_found: AudioPortNotFoundBehavior,
     pub buffer_size_config_error: BufferSizeConfigErrorBehavior,
 
+    #[cfg(feature = "midi")]
     pub midi_backend_not_found: NotFoundBehavior,
+    #[cfg(feature = "midi")]
     pub midi_device_not_found: MidiDeviceNotFoundBehavior,
 }
 
@@ -57,7 +59,7 @@ pub enum SampleRateConfigErrorBehavior {
     /// Try to use the next best sample rate before returning
     /// an error (but only if that sample rate is within the
     /// given range (inclusive)).
-    TryNextBestWithMinMaxSR((u32, u32)),
+    TryNextBestWithMinMaxSR(u32, u32),
 
     /// Stop trying to run the stream and return an error.
     ReturnWithError,
@@ -113,6 +115,7 @@ impl Default for BufferSizeConfigErrorBehavior {
     }
 }
 
+#[cfg(feature = "midi")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MidiDeviceNotFoundBehavior {
     /// Use empty (silent) buffers for each invalid device.
@@ -124,6 +127,7 @@ pub enum MidiDeviceNotFoundBehavior {
     ReturnWithError,
 }
 
+#[cfg(feature = "midi")]
 impl Default for MidiDeviceNotFoundBehavior {
     fn default() -> Self {
         MidiDeviceNotFoundBehavior::UseEmptyBufferForInvalidDevices
