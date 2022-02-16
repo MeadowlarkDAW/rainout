@@ -14,7 +14,7 @@ mod windows;
 use windows as platform;
 
 mod config;
-mod enumerator;
+mod enumeration;
 mod process_info;
 mod run;
 mod stream_info;
@@ -26,7 +26,7 @@ pub mod error;
 pub mod error_behavior;
 
 pub use config::*;
-pub use enumerator::*;
+pub use enumeration::*;
 pub use error_behavior::ErrorBehavior;
 pub use process_info::*;
 pub use run::*;

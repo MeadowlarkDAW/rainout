@@ -1,136 +1,102 @@
 use crate::{platform, Config};
 
-pub struct DeviceEnumerator {
-    pde: platform::PlatformDeviceEnumerator,
+/// Returns the available audio backends for this platform.
+pub fn available_audio_backends() -> &'static [AudioBackend] {
+    platform::available_audio_backends()
 }
 
-impl DeviceEnumerator {
-    pub fn new() -> Result<Self, ()> {
-        Ok(Self { pde: platform::PlatformDeviceEnumerator::new()? })
-    }
+#[cfg(feature = "midi")]
+/// Returns the available midi backends for this platform.
+pub fn available_midi_backends() -> &'static [MidiBackend] {
+    platform::available_midi_backends()
+}
 
-    /// Returns the available audio backends for this platform.
-    pub fn available_audio_backends(&self) -> &'static [AudioBackend] {
-        self.pde.available_audio_backends()
-    }
+/// Get information about a particular audio backend.
+///
+/// This will update the list of available devices as well as the the
+/// status of whether or not this backend is running.
+///
+/// This will return an error if the backend is not available on this system.
+pub fn enumerate_audio_backend(backend: AudioBackend) -> Result<AudioBackendInfo, ()> {
+    platform::enumerate_audio_backend(backend)
+}
 
-    #[cfg(feature = "midi")]
-    /// Returns the available midi backends for this platform.
-    pub fn available_midi_backends(&self) -> &'static [MidiBackend] {
-        self.pde.available_midi_backends()
-    }
+/// Get information about a particular audio device.
+///
+/// This will return an error if the given device was not found.
+pub fn enumerate_audio_device(
+    backend: AudioBackend,
+    device_id: &DeviceID,
+) -> Result<AudioDeviceInfo, ()> {
+    platform::enumerate_audio_device(backend, device_id)
+}
 
-    /// Get information about a particular audio backend.
-    ///
-    /// This will update the list of available devices as well as the the
-    /// status of whether or not this backend is running.
-    ///
-    /// This will return an error if the backend is not available on this system.
-    pub fn enumerate_audio_backend(
-        &mut self,
-        backend: AudioBackend,
-    ) -> Result<AudioBackendInfo, ()> {
-        self.pde.enumerate_audio_backend(backend)
-    }
+#[cfg(feature = "midi")]
+/// Get information about a particular midi backend.
+///
+/// This will update the list of available devices as well as the the
+/// status of whether or not this backend is running.
+///
+/// This will return an error if the backend is not available on this system.
+pub fn enumerate_midi_backend(backend: MidiBackend) -> Result<MidiBackendInfo, ()> {
+    platform::enumerate_midi_backend(backend)
+}
 
-    /// Get information about a particular audio device.
-    ///
-    /// This will return an error if the given device was not found.
-    pub fn enumerate_audio_device(
-        &mut self,
-        backend: AudioBackend,
-        device_id: &DeviceID,
-    ) -> Result<AudioDeviceInfo, ()> {
-        self.pde.enumerate_audio_device(backend, device_id)
-    }
+#[cfg(feature = "midi")]
+/// Get information about a particular midi device.
+///
+/// This will return an error if the given device was not found.
+pub fn enumerate_midi_device(
+    backend: MidiBackend,
+    device_id: &DeviceID,
+) -> Result<MidiDeviceInfo, ()> {
+    platform::enumerate_midi_device(backend, device_id)
+}
 
-    #[cfg(feature = "midi")]
-    /// Get information about a particular midi backend.
-    ///
-    /// This will update the list of available devices as well as the the
-    /// status of whether or not this backend is running.
-    ///
-    /// This will return an error if the backend is not available on this system.
-    pub fn enumerate_midi_backend(&mut self, backend: MidiBackend) -> Result<MidiBackendInfo, ()> {
-        self.pde.enumerate_midi_backend(backend)
-    }
+/// Enumerate through each backend to find the preferred/best default audio
+/// backend for this system.
+///
+/// If a higher priority backend does not have any available devices, then
+/// this will try to return the next best backend that does have an
+/// available device.
+///
+/// This does not enumerate through the devices in each backend, just the
+/// names of each device.
+pub fn find_preferred_audio_backend() -> AudioBackend {
+    platform::find_preferred_audio_backend()
+}
 
-    #[cfg(feature = "midi")]
-    /// Get information about a particular midi device.
-    ///
-    /// This will return an error if the given device was not found.
-    pub fn enumerate_midi_device(
-        &mut self,
-        backend: MidiBackend,
-        device_id: &DeviceID,
-    ) -> Result<MidiDeviceInfo, ()> {
-        self.pde.enumerate_midi_device(backend, device_id)
-    }
+#[cfg(feature = "midi")]
+/// Enumerate through each backend to find the preferred/best default midi
+/// backend for this system.
+///
+/// If a higher priority backend does not have any available devices, then
+/// this will try to return the next best backend that does have an
+/// available device.
+///
+/// This does not enumerate through the devices in each backend, just the
+/// names of each device.
+pub fn find_preferred_midi_backend() -> MidiBackend {
+    platform::find_preferred_midi_backend()
+}
 
-    /// Enumerate through each backend to find the preferred/best default audio
-    /// backend for this system.
-    ///
-    /// If a higher priority backend does not have any available devices, then
-    /// this will try to return the next best backend that does have an
-    /// available device.
-    ///
-    /// This does not enumerate through the devices in each backend, just the
-    /// names of each device.
-    pub fn find_preferred_audio_backend(&mut self) -> AudioBackend {
-        self.pde.find_preferred_audio_backend()
-    }
+/// Enumerate through each audio device to find the preferred/best default audio
+/// device for this backend.
+///
+/// This process can be slow. Try to use `AudioBackendInfo::preferred_device`
+/// before calling this method.
+pub fn find_preferred_audio_device(backend: AudioBackend) -> Option<AudioDeviceInfo> {
+    platform::find_preferred_audio_device(backend)
+}
 
-    #[cfg(feature = "midi")]
-    /// Enumerate through each backend to find the preferred/best default midi
-    /// backend for this system.
-    ///
-    /// If a higher priority backend does not have any available devices, then
-    /// this will try to return the next best backend that does have an
-    /// available device.
-    ///
-    /// This does not enumerate through the devices in each backend, just the
-    /// names of each device.
-    pub fn find_preferred_midi_backend(&mut self) -> MidiBackend {
-        self.pde.find_preferred_midi_backend()
-    }
-
-    /// Enumerate through each audio device to find the preferred/best default audio
-    /// device for this backend.
-    ///
-    /// This process can be slow. Try to use `AudioBackendInfo::preferred_device`
-    /// before calling this method.
-    pub fn find_preferred_audio_device(
-        &mut self,
-        backend: AudioBackend,
-    ) -> Option<AudioDeviceInfo> {
-        self.pde.find_preferred_audio_device(backend)
-    }
-
-    #[cfg(feature = "midi")]
-    /// Enumerate through each midi device to find the preferred/best default midi
-    /// device for this backend.
-    ///
-    /// This process can be slow. Try to use `MidiBackendInfo::preferred_in_device` and
-    /// `MidiBackendInfo::preferred_out_device` before calling this method.
-    pub fn find_preferred_midi_device(&mut self, backend: MidiBackend) -> Option<MidiDeviceInfo> {
-        self.pde.find_preferred_midi_device(backend)
-    }
-
-    /// Get the estimated total latency of a particular configuration before running it.
-    ///
-    /// `None` will be returned if the latency is not known at this time or if the
-    /// given config is invalid.
-    pub fn estimated_latency(&self, config: &Config) -> Option<u32> {
-        self.pde.estimated_latency(config)
-    }
-
-    /// Get the sample rate of a particular configuration before running it.
-    ///
-    /// `None` will be returned if the sample rate is not known at this time or if the
-    /// given config is invalid.
-    pub fn sample_rate(&self, config: &Config) -> Option<u32> {
-        self.pde.sample_rate(config)
-    }
+#[cfg(feature = "midi")]
+/// Enumerate through each midi device to find the preferred/best default midi
+/// device for this backend.
+///
+/// This process can be slow. Try to use `MidiBackendInfo::preferred_in_device` and
+/// `MidiBackendInfo::preferred_out_device` before calling this method.
+pub fn find_preferred_midi_device(backend: MidiBackend) -> Option<MidiDeviceInfo> {
+    platform::find_preferred_midi_device(backend)
 }
 
 /// Information about a particular audio backend, including a list of the

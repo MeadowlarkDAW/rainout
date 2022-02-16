@@ -7,6 +7,22 @@ use crate::{
 #[cfg(feature = "midi")]
 use crate::error::ChangeMidiDeviceConfigError;
 
+/// Get the estimated total latency of a particular configuration before running it.
+///
+/// `None` will be returned if the latency is not known at this time or if the
+/// given config is invalid.
+pub fn estimated_latency(config: &Config) -> Option<u32> {
+    todo!()
+}
+
+/// Get the sample rate of a particular configuration before running it.
+///
+/// `None` will be returned if the sample rate is not known at this time or if the
+/// given config is invalid.
+pub fn sample_rate(config: &Config) -> Option<u32> {
+    todo!()
+}
+
 pub fn run<P: ProcessHandler, E: ErrorHandler>(
     config: &Config,
     options: &RunOptions,

@@ -1,2 +1,5 @@
-#[cfg(feature = "jack-backend")]
-mod jack_backend;
+use jack::Client;
+
+pub struct JackDeviceEnumerator {
+    dummy_client: Option<jack::Client>,
+}

@@ -8,6 +8,22 @@ use crate::{platform, AudioBufferSizeConfig, Config, DeviceID, ProcessInfo, Stre
 #[cfg(feature = "midi")]
 use crate::error::ChangeMidiDeviceConfigError;
 
+/// Get the estimated total latency of a particular configuration before running it.
+///
+/// `None` will be returned if the latency is not known at this time or if the
+/// given config is invalid.
+pub fn estimated_latency(config: &Config) -> Option<u32> {
+    platform::estimated_latency(config)
+}
+
+/// Get the sample rate of a particular configuration before running it.
+///
+/// `None` will be returned if the sample rate is not known at this time or if the
+/// given config is invalid.
+pub fn sample_rate(config: &Config) -> Option<u32> {
+    platform::sample_rate(config)
+}
+
 /// A processor for a stream.
 pub trait ProcessHandler: 'static + Send {
     /// Initialize/allocate any buffers here. This will only be called once on
