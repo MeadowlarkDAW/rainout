@@ -38,6 +38,11 @@ pub struct StreamInfo {
     /// The total estimated latency of this stream in frames (if it is available)
     pub estimated_latency: Option<u32>,
 
+    /// If this is `true`, then it means that the backend is checking
+    /// each audio input buffer for silence before each call to the
+    /// `process()` loop and marking the flag in `ProcessInfo`.
+    pub checking_for_silent_inputs: bool,
+
     /// The information about the MIDI stream.
     ///
     /// If no MIDI stream is running, this will be `None`.
@@ -67,6 +72,15 @@ pub enum StreamAudioBufferSize {
     UnfixedWithMaxSize(u32),
 }
 
+impl StreamAudioBufferSize {
+    pub fn max_buffer_size(&self) -> u32 {
+        match self {
+            Self::FixedSized(s) => *s,
+            Self::UnfixedWithMaxSize(s) => *s,
+        }
+    }
+}
+
 #[cfg(feature = "midi")]
 /// MIDI information about a running stream.
 #[derive(Debug, Clone)]
@@ -85,6 +99,9 @@ pub struct MidiStreamInfo {
     /// The buffers presented in the `ProcessInfo::midi_outputs` will
     /// appear in this exact same order.
     pub out_devices: Vec<StreamMidiDeviceInfo>,
+
+    /// The allocated size for each MIDI buffer.
+    pub midi_buffer_size: usize,
 }
 
 #[cfg(feature = "midi")]

@@ -68,56 +68,41 @@ The API is divided into three stages: Enumerating the available devices, creatin
 
 ```rust
 /// Returns the available audio backends for this platform.
+///
+/// These are ordered with the first item (index 0) being the most highly
+/// preferred default backend.
 pub fn available_audio_backends() -> &'static [AudioBackend] {
-    ...
+    platform::available_audio_backends()
 }
 
 #[cfg(feature = "midi")]
 /// Returns the available midi backends for this platform.
+///
+/// These are ordered with the first item (index 0) being the most highly
+/// preferred default backend.
 pub fn available_midi_backends() -> &'static [MidiBackend] {
-    ...
+    platform::available_midi_backends()
 }
 
-/// Get information about a particular audio backend.
+/// Get information about a particular audio backend and its devices.
 ///
 /// This will update the list of available devices as well as the the
 /// status of whether or not this backend is running.
 ///
 /// This will return an error if the backend is not available on this system.
 pub fn enumerate_audio_backend(backend: AudioBackend) -> Result<AudioBackendInfo, ()> {
-    ...
-}
-
-/// Get information about a particular audio device.
-///
-/// This will return an error if the given device was not found.
-pub fn enumerate_audio_device(
-    backend: AudioBackend,
-    device_id: &DeviceID,
-) -> Result<AudioDeviceInfo, ()> {
-    ...
+    platform::enumerate_audio_backend(backend)
 }
 
 #[cfg(feature = "midi")]
-/// Get information about a particular midi backend.
+/// Get information about a particular midi backend and its devices.
 ///
 /// This will update the list of available devices as well as the the
 /// status of whether or not this backend is running.
 ///
 /// This will return an error if the backend is not available on this system.
 pub fn enumerate_midi_backend(backend: MidiBackend) -> Result<MidiBackendInfo, ()> {
-    ...
-}
-
-#[cfg(feature = "midi")]
-/// Get information about a particular midi device.
-///
-/// This will return an error if the given device was not found.
-pub fn enumerate_midi_device(
-    backend: MidiBackend,
-    device_id: &DeviceID,
-) -> Result<MidiDeviceInfo, ()> {
-    ...
+    platform::enumerate_midi_backend(backend)
 }
 
 /// Enumerate through each backend to find the preferred/best default audio
@@ -130,39 +115,6 @@ pub fn enumerate_midi_device(
 /// This does not enumerate through the devices in each backend, just the
 /// names of each device.
 pub fn find_preferred_audio_backend() -> AudioBackend {
-    ...
-}
-
-#[cfg(feature = "midi")]
-/// Enumerate through each backend to find the preferred/best default midi
-/// backend for this system.
-///
-/// If a higher priority backend does not have any available devices, then
-/// this will try to return the next best backend that does have an
-/// available device.
-///
-/// This does not enumerate through the devices in each backend, just the
-/// names of each device.
-pub fn find_preferred_midi_backend() -> MidiBackend {
-    ...
-}
-
-/// Enumerate through each audio device to find the preferred/best default audio
-/// device for this backend.
-///
-/// This process can be slow. Try to use `AudioBackendInfo::preferred_device`
-/// before calling this method.
-pub fn find_preferred_audio_device(backend: AudioBackend) -> Option<AudioDeviceInfo> {
-    ...
-}
-
-#[cfg(feature = "midi")]
-/// Enumerate through each midi device to find the preferred/best default midi
-/// device for this backend.
-///
-/// This process can be slow. Try to use `MidiBackendInfo::preferred_in_device` and
-/// `MidiBackendInfo::preferred_out_device` before calling this method.
-pub fn find_preferred_midi_device(backend: MidiBackend) -> Option<MidiDeviceInfo> {
     ...
 }
 
@@ -183,17 +135,17 @@ pub struct AudioBackendInfo {
     /// running on the system, then this will be false.)
     pub running: bool,
 
-    /// The names/identifiers of the devices that are available in this backend.
+    /// The devices that are available in this backend.
     ///
     /// Please note that these are not necessarily each physical device in the
     /// system. For example, in backends like Jack and CoreAudio, the whole system
-    /// acts like a single "duplex device" which is the audio server.
-    pub devices: Vec<DeviceID>,
+    /// acts like a single "duplex device" which is the audio server itself.
+    pub devices: Vec<AudioDeviceInfo>,
 
-    /// The preferred/best default device for this backend.
+    /// The index of the preferred/best default device for this backend.
     ///
     /// This will be `None` if the preferred device is not known at this time.
-    pub preferred_device: Option<DeviceID>,
+    pub default_device: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -245,6 +197,12 @@ impl AudioBackend {
     /// ever one "system-wide duplex device" which is the audio server itself, and
     /// thus showing this information in a settings GUI is irrelevant.
     pub fn devices_are_relevant(&self) -> bool {
+        ...
+    }
+
+    /// If this is true, then it means that this backend supports creating
+    /// virtual ports that can be connected later.
+    pub fn supports_creating_virtual_ports(&self) -> bool {
         ...
     }
 }
@@ -398,20 +356,20 @@ pub struct MidiBackendInfo {
     pub running: bool,
 
     /// The list of available input MIDI devices
-    pub in_devices: Vec<DeviceID>,
+    pub in_devices: Vec<MidiDeviceInfo>,
 
     /// The list of available output MIDI devices
-    pub out_devices: Vec<DeviceID>,
+    pub out_devices: Vec<MidiDeviceInfo>,
 
-    /// The preferred/best default input device for this backend.
+    /// The index of the preferred/best default input device for this backend.
     ///
     /// This will be `None` if the preferred device is not known at this time.
-    pub preferred_in_device: Option<DeviceID>,
+    pub default_in_device: Option<usize>,
 
-    /// The preferred/best default output device for this backend.
+    /// The index of the preferred/best default output device for this backend.
     ///
     /// This will be `None` if the preferred device is not known at this time.
-    pub preferred_out_device: Option<DeviceID>,
+    pub default_out_device: Option<usize>,
 }
 
 #[cfg(feature = "midi")]
@@ -420,7 +378,6 @@ pub struct MidiBackendInfo {
 #[derive(Debug, Clone)]
 pub struct MidiDeviceInfo {
     pub id: DeviceID,
-
     // TODO: More information about the MIDI device
 }
 ```

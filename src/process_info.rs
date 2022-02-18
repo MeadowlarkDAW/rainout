@@ -4,10 +4,10 @@ use crate::MidiBuffer;
 /// The audio and MIDI buffers for this process cycle.
 pub struct ProcessInfo<'a> {
     /// The audio input buffers.
-    pub audio_inputs: &'a [&'a [f32]],
+    pub audio_inputs: &'a [Vec<f32>],
 
     /// The audio output buffers.
-    pub audio_outputs: &'a [&'a mut [f32]],
+    pub audio_outputs: &'a mut [Vec<f32>],
 
     /// The number of audio frames in this process cycle.
     ///
@@ -26,9 +26,9 @@ pub struct ProcessInfo<'a> {
 
     #[cfg(feature = "midi")]
     /// The MIDI input buffers.
-    pub midi_inputs: &'a [&'a MidiBuffer],
+    pub midi_inputs: &'a [MidiBuffer],
 
     #[cfg(feature = "midi")]
     /// The MIDI output buffers.
-    pub midi_outputs: &'a [&'a mut MidiBuffer],
+    pub midi_outputs: &'a mut [MidiBuffer],
 }

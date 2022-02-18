@@ -7,6 +7,9 @@ use crate::{
 #[cfg(feature = "midi")]
 use crate::error::ChangeMidiDeviceConfigError;
 
+#[cfg(feature = "jack-linux")]
+use super::jack_backend;
+
 /// Get the estimated total latency of a particular configuration before running it.
 ///
 /// `None` will be returned if the latency is not known at this time or if the
@@ -29,7 +32,13 @@ pub fn run<P: ProcessHandler, E: ErrorHandler>(
     process_handler: P,
     error_handler: E,
 ) -> Result<StreamHandle<P, E>, RunConfigError> {
-    todo!()
+    match config.audio_backend {
+        #[cfg(feature = "jack-linux")]
+        crate::AudioBackend::JackLinux => {
+            jack_backend::run(config, options, process_handler, error_handler)
+        }
+        b => Err(RunConfigError::AudioBackendNotFound(b)),
+    }
 }
 
 pub struct PlatformStreamHandle<P: ProcessHandler, E: ErrorHandler> {

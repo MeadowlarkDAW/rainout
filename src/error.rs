@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::AudioBackend;
 #[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
 
@@ -17,23 +18,54 @@ impl fmt::Display for StreamError {
 
 #[derive(Debug, Clone)]
 pub enum FatalStreamError {
+    AudioServerShutdown { msg: Option<String> },
+    AudioServerChangedSamplerate(u32),
     // TODO
 }
 impl Error for FatalStreamError {}
 impl fmt::Display for FatalStreamError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            FatalStreamError::AudioServerShutdown { msg } => {
+                if let Some(msg) = msg {
+                    write!(f, "Fatal stream error: the audio server was shut down: {}", msg)
+                } else {
+                    write!(f, "Fatal stream error: the audio server was shut down")
+                }
+            }
+            FatalStreamError::AudioServerChangedSamplerate(sr) => {
+                write!(f, "Fatal stream error: the audio server changed its sample rate to: {}", sr)
+            }
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum RunConfigError {
-    // TODO
+    AudioBackendNotFound(AudioBackend),
+    AudioPortNotFound(String),
+    #[cfg(feature = "midi")]
+    MidiDeviceNotFound(String),
+    PlatformSpecific(Box<dyn Error>),
 }
 impl Error for RunConfigError {}
 impl fmt::Display for RunConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            RunConfigError::AudioBackendNotFound(b) => {
+                write!(f, "Failed to run config: The audio backend {:?} was not found", b)
+            }
+            RunConfigError::AudioPortNotFound(p) => {
+                write!(f, "Failed to run config: The audio port {} was not found", p)
+            }
+            #[cfg(feature = "midi")]
+            RunConfigError::MidiDeviceNotFound(m) => {
+                write!(f, "Failed to run config: The midi device {} was not found", m)
+            }
+            RunConfigError::PlatformSpecific(e) => {
+                write!(f, "Failed to run config: {}", e)
+            }
+        }
     }
 }
 

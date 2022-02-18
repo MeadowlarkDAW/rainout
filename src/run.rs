@@ -114,7 +114,7 @@ pub fn run<P: ProcessHandler, E: ErrorHandler>(
 // When this gets dropped, the stream (audio thread) will automatically stop. This
 /// is the intended method for stopping a stream.
 pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
-    platform_handle: platform::PlatformStreamHandle<P, E>,
+    pub(crate) platform_handle: Box<dyn PlatformStreamHandle<P, E>>,
 }
 
 impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
@@ -184,4 +184,59 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     pub fn can_change_midi_device_config(&self) -> bool {
         self.platform_handle.can_change_midi_device_config()
     }
+}
+
+pub(crate) trait PlatformStreamHandle<P: ProcessHandler, E: ErrorHandler> {
+    /// Returns the actual configuration of the running stream. This may differ
+    /// from the configuration passed into the `run()` method.
+    fn stream_info(&self) -> &StreamInfo;
+
+    /// Change the audio port configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
+    fn change_audio_port_config(
+        &mut self,
+        audio_in_ports: Option<Vec<String>>,
+        audio_out_ports: Option<Vec<String>>,
+    ) -> Result<(), ChangeAudioPortConfigError>;
+
+    /// Change the buffer size configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
+    fn change_audio_buffer_size_config(
+        &mut self,
+        config: AudioBufferSizeConfig,
+    ) -> Result<(), ChangeAudioBufferSizeError>;
+
+    #[cfg(feature = "midi")]
+    /// Change the midi device configuration while the audio thread is still running.
+    /// Support for this will depend on the backend.
+    ///
+    /// If the given config is invalid, an error will be returned with no
+    /// effect on the running audio thread.
+    fn change_midi_device_config(
+        &mut self,
+        in_devices: Vec<DeviceID>,
+        out_devices: Vec<DeviceID>,
+    ) -> Result<(), ChangeMidiDeviceConfigError>;
+
+    // It may be possible to also add `change_sample_rate_config()` here, but
+    // I'm not sure how useful this would actually be.
+
+    /// Returns whether or not this backend supports changing the audio bus
+    /// configuration while the audio thread is running.
+    fn can_change_audio_port_config(&self) -> bool;
+
+    // Returns whether or not this backend supports changing the buffer size
+    // configuration while the audio thread is running.
+    fn can_change_audio_buffer_size_config(&self) -> bool;
+
+    #[cfg(feature = "midi")]
+    /// Returns whether or not this backend supports changing the midi device
+    /// config while the audio thread is running.
+    fn can_change_midi_device_config(&self) -> bool;
 }
