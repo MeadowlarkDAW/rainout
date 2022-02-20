@@ -30,7 +30,8 @@ ringbuf = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # jack = { version = "0.9", optional = true }
-jack = { path = "../rust-jack", optional = true }
+jack = { git = "https://github.com/BillyDM/rust-jack.git", rev = "d632cbf998559cf14cf0dfe75077ea13f212e3c3", optional = true }
+# jack = { path = "../rust-jack", optional = true }
 
 [dev-dependencies]
 simple_logger = "2.1"
