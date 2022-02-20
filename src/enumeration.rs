@@ -136,24 +136,24 @@ impl AudioBackend {
 
             /*
             #[cfg(feature = "alsa")]
-            Backend::Alsa => true,
+            AudioBackend::Alsa => true,
 
             #[cfg(feature = "pulseaudio")]
-            Pulseaudio => true,
+            AudioBackend::Pulseaudio => true,
             */
             AudioBackend::CoreAudio => false,
 
             /*
             #[cfg(feature = "jack-macos")]
-            Backend::JackMacOS => false,
+            AudioBackend::JackMacOS => false,
             */
             AudioBackend::Wasapi => true,
 
             #[cfg(feature = "asio")]
-            Backend::Asio => true,
+            AudioBackend::Asio => true,
             /*
             #[cfg(feature = "jack-windows")]
-            Backend::JackWindows => false,
+            AudioBackend::JackWindows => false,
             */
         }
     }
@@ -169,24 +169,55 @@ impl AudioBackend {
 
             /*
             #[cfg(feature = "alsa")]
-            Backend::Alsa => false,
+            AudioBackend::Alsa => false,
 
             #[cfg(feature = "pulseaudio")]
-            Pulseaudio => false,
+            AudioBackend::Pulseaudio => false,
             */
             AudioBackend::CoreAudio => false, // I think?
 
             /*
             #[cfg(feature = "jack-macos")]
-            Backend::JackMacOS => true,
+            AudioBackend::JackMacOS => true,
             */
             AudioBackend::Wasapi => false,
 
             #[cfg(feature = "asio")]
-            Backend::Asio => false,
+            AudioBackend::Asio => false,
             /*
             #[cfg(feature = "jack-windows")]
-            Backend::JackWindows => true,
+            AudioBackend::JackWindows => true,
+            */
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AudioBackend::Pipewire => "Pipewire",
+
+            #[cfg(feature = "jack-linux")]
+            AudioBackend::JackLinux => "Jack",
+
+            /*
+            #[cfg(feature = "alsa")]
+            AudioBackend::Alsa => "Alsa",
+
+            #[cfg(feature = "pulseaudio")]
+            AudioBackend::Pulseaudio => "Pulseaudio",
+            */
+            AudioBackend::CoreAudio => "CoreAudio", // I think?
+
+            /*
+            #[cfg(feature = "jack-macos")]
+            AudioBackend::JackMacOS => "Jack",
+            */
+            AudioBackend::Wasapi => "WASAPI",
+
+            #[cfg(feature = "asio")]
+            Backend::Asio => "ASIO",
+            /*
+            #[cfg(feature = "jack-windows")]
+            AudioBackend::JackWindows => "JACK",
             */
         }
     }
@@ -231,6 +262,39 @@ pub enum MidiBackend {
     /// Jack on Windows
     JackWindows,
     */
+}
+
+impl MidiBackend {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MidiBackend::Pipewire => "Pipewire",
+
+            #[cfg(feature = "jack-linux")]
+            MidiBackend::JackLinux => "Jack",
+
+            /*
+            #[cfg(feature = "alsa")]
+            MidiBackend::Alsa => "Alsa",
+
+            #[cfg(feature = "pulseaudio")]
+            MidiBackend::Pulseaudio => "Pulseaudio",
+            */
+            MidiBackend::CoreAudio => "CoreAudio", // I think?
+
+            /*
+            #[cfg(feature = "jack-macos")]
+            Backend::JackMacOS => "Jack",
+            */
+            MidiBackend::Wasapi => "WASAPI",
+
+            #[cfg(feature = "asio")]
+            MidiBackend::Asio => "ASIO",
+            /*
+            #[cfg(feature = "jack-windows")]
+            MidiBackend::JackWindows => "JACK",
+            */
+        }
+    }
 }
 
 /// Information about a particular audio device, including all its available
@@ -302,17 +366,19 @@ pub struct AsioDeviceInfo {
 /// The range of possible fixed sizes of buffers/blocks for an audio device.
 #[derive(Debug, Clone)]
 pub struct FixedBufferSizeRange {
-    /// The minimum buffer/block size (inclusive)
-    pub min: u32,
-    /// The maximum buffer/block size (inclusive)
-    pub max: u32,
-
-    /// If this is `true` then it means the device only supports fixed buffer/block
-    /// sizes between `min` and `max` that are a power of 2.
-    pub must_be_power_of_2: bool,
+    pub mode: FixedBufferRangeMode,
 
     /// The default/preferred fixed buffer size for this device.
     pub default: u32,
+}
+
+#[derive(Debug, Clone)]
+pub enum FixedBufferRangeMode {
+    /// A set list of available buffer sizes
+    List(Vec<u32>),
+
+    /// The buffer size can be any number between these two values (inclusive)
+    Range { min: u32, max: u32 },
 }
 
 /// The default channel layout of the ports for an audio device.

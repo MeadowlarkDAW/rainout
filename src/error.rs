@@ -6,34 +6,24 @@ use crate::AudioBackend;
 use crate::MAX_MIDI_MSG_SIZE;
 
 #[derive(Debug, Clone)]
+/// An error that caused the stream to stop.
 pub enum StreamError {
+    AudioServerShutdown { msg: Option<String> },
+    AudioServerChangedSamplerate(u32),
     // TODO
 }
 impl Error for StreamError {}
 impl fmt::Display for StreamError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum FatalStreamError {
-    AudioServerShutdown { msg: Option<String> },
-    AudioServerChangedSamplerate(u32),
-    // TODO
-}
-impl Error for FatalStreamError {}
-impl fmt::Display for FatalStreamError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FatalStreamError::AudioServerShutdown { msg } => {
+            StreamError::AudioServerShutdown { msg } => {
                 if let Some(msg) = msg {
                     write!(f, "Fatal stream error: the audio server was shut down: {}", msg)
                 } else {
                     write!(f, "Fatal stream error: the audio server was shut down")
                 }
             }
-            FatalStreamError::AudioServerChangedSamplerate(sr) => {
+            StreamError::AudioServerChangedSamplerate(sr) => {
                 write!(f, "Fatal stream error: the audio server changed its sample rate to: {}", sr)
             }
         }

@@ -21,14 +21,16 @@ asio = []
 
 [workspace]
 members = [
-    "examples/demo",
+    "examples/settings_gui_demo",
 ]
 
 [dependencies]
 log = "0.4"
+ringbuf = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-jack = { version = "0.9", optional = true }
+# jack = { version = "0.9", optional = true }
+jack = { path = "../rust-jack", optional = true }
 
 [dev-dependencies]
 simple_logger = "2.1"

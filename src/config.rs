@@ -52,6 +52,12 @@ pub struct AudioBufferSizeConfig {
     pub fallback_max_buffer_size: u32,
 }
 
+impl Default for AudioBufferSizeConfig {
+    fn default() -> Self {
+        AudioBufferSizeConfig { try_fixed_buffer_size: Some(1024), fallback_max_buffer_size: 2048 }
+    }
+}
+
 #[cfg(feature = "midi")]
 /// A full configuration of midi devices to connect to.
 #[derive(Debug, Clone)]

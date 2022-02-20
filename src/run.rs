@@ -1,9 +1,8 @@
-use crate::error::{
-    ChangeAudioBufferSizeError, ChangeAudioPortConfigError, FatalStreamError, RunConfigError,
-    StreamError,
-};
+use crate::error::{ChangeAudioBufferSizeError, ChangeAudioPortConfigError, RunConfigError};
 use crate::error_behavior::ErrorBehavior;
-use crate::{platform, AudioBufferSizeConfig, Config, DeviceID, ProcessInfo, StreamInfo};
+use crate::{
+    platform, AudioBufferSizeConfig, Config, DeviceID, ProcessInfo, StreamInfo, StreamMsgChannel,
+};
 
 #[cfg(feature = "midi")]
 use crate::error::ChangeMidiDeviceConfigError;
@@ -38,17 +37,6 @@ pub trait ProcessHandler: 'static + Send {
     fn process<'a>(&mut self, proc_info: ProcessInfo<'a>);
 }
 
-/// An error handler for a stream.
-pub trait ErrorHandler: 'static + Send + Sync {
-    /// Called when a non-fatal error occurs (any error that does not require the audio
-    /// thread to restart).
-    fn nonfatal_error(&mut self, error: StreamError);
-
-    /// Called when a fatal error occurs (any error that requires the audio thread to
-    /// restart).
-    fn fatal_error(self, error: FatalStreamError);
-}
-
 #[derive(Debug, Clone)]
 pub struct RunOptions {
     /// If `Some`, then the backend will use this name as the
@@ -75,6 +63,11 @@ pub struct RunOptions {
 
     /// How the system should respond to various errors.
     pub error_behavior: ErrorBehavior,
+
+    /// The size of the audio thread to stream handle message buffer.
+    ///
+    /// By default this is set to `512`.
+    pub msg_buffer_size: usize,
 }
 
 impl Default for RunOptions {
@@ -87,6 +80,7 @@ impl Default for RunOptions {
 
             check_for_silent_inputs: false,
             error_behavior: ErrorBehavior::default(),
+            msg_buffer_size: 512,
         }
     }
 }
@@ -100,24 +94,27 @@ impl Default for RunOptions {
 ///
 /// If an error is returned, then it means the config failed to run and no audio
 /// thread was spawned.
-pub fn run<P: ProcessHandler, E: ErrorHandler>(
+pub fn run<P: ProcessHandler>(
     config: &Config,
     options: &RunOptions,
     process_handler: P,
-    error_handler: E,
-) -> Result<StreamHandle<P, E>, RunConfigError> {
-    platform::run(config, options, process_handler, error_handler)
+) -> Result<StreamHandle<P>, RunConfigError> {
+    platform::run(config, options, process_handler)
 }
 
 /// The handle to a running audio/midi stream.
 ///
 // When this gets dropped, the stream (audio thread) will automatically stop. This
 /// is the intended method for stopping a stream.
-pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
-    pub(crate) platform_handle: Box<dyn PlatformStreamHandle<P, E>>,
+pub struct StreamHandle<P: ProcessHandler> {
+    /// The message channel that recieves notifications from the audio thread
+    /// including any errors that have occurred.
+    pub messages: StreamMsgChannel,
+
+    pub(crate) platform_handle: Box<dyn PlatformStreamHandle<P>>,
 }
 
-impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
+impl<P: ProcessHandler> StreamHandle<P> {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
     pub fn stream_info(&self) -> &StreamInfo {
@@ -186,7 +183,7 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     }
 }
 
-pub(crate) trait PlatformStreamHandle<P: ProcessHandler, E: ErrorHandler> {
+pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
     fn stream_info(&self) -> &StreamInfo;

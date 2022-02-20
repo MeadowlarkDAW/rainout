@@ -15,6 +15,7 @@ use windows as platform;
 
 mod config;
 mod enumeration;
+mod message_channel;
 mod process_info;
 mod run;
 mod stream_info;
@@ -28,6 +29,7 @@ pub mod error_behavior;
 pub use config::*;
 pub use enumeration::*;
 pub use error_behavior::ErrorBehavior;
+pub use message_channel::*;
 pub use process_info::*;
 pub use run::*;
 pub use stream_info::*;
