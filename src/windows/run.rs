@@ -1,7 +1,6 @@
 use crate::error::{ChangeAudioBufferSizeError, ChangeAudioPortConfigError, RunConfigError};
 use crate::{
-    AudioBufferSizeConfig, Config, DeviceID, ErrorHandler, ProcessHandler, RunOptions,
-    StreamHandle, StreamInfo,
+    AudioBufferSizeConfig, Config, DeviceID, ProcessHandler, RunOptions, StreamHandle, StreamInfo,
 };
 
 #[cfg(feature = "midi")]
@@ -23,21 +22,19 @@ pub fn sample_rate(config: &Config) -> Option<u32> {
     todo!()
 }
 
-pub fn run<P: ProcessHandler, E: ErrorHandler>(
+pub fn run<P: ProcessHandler>(
     config: &Config,
     options: &RunOptions,
     process_handler: P,
-    error_handler: E,
-) -> Result<StreamHandle<P, E>, RunConfigError> {
+) -> Result<StreamHandle<P>, RunConfigError> {
     todo!()
 }
 
-pub struct PlatformStreamHandle<P: ProcessHandler, E: ErrorHandler> {
+pub struct PlatformStreamHandle<P: ProcessHandler> {
     process_handler: P,
-    error_handler: E,
 }
 
-impl<P: ProcessHandler, E: ErrorHandler> PlatformStreamHandle<P, E> {
+impl<P: ProcessHandler> PlatformStreamHandle<P> {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
     pub fn stream_info(&self) -> &StreamInfo {
