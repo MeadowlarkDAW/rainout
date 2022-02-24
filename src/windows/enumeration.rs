@@ -3,9 +3,11 @@ use crate::{AudioBackend, AudioBackendInfo, AudioDeviceInfo, Config, DeviceID};
 #[cfg(feature = "midi")]
 use crate::{MidiBackend, MidiBackendInfo, MidiDeviceInfo};
 
+use super::wasapi_backend;
+
 /// Returns the available audio backends for this platform.
 pub fn available_audio_backends() -> &'static [AudioBackend] {
-    &[]
+    &[AudioBackend::Wasapi]
 }
 
 #[cfg(feature = "midi")]
@@ -20,7 +22,10 @@ pub fn available_midi_backends() -> &'static [MidiBackend] {
 ///
 /// This will return an error if the backend is not available on this system.
 pub fn enumerate_audio_backend(backend: AudioBackend) -> Result<AudioBackendInfo, ()> {
-    todo!()
+    match backend {
+        AudioBackend::Wasapi => wasapi_backend::backend_info(),
+        _ => Err(()),
+    }
 }
 
 /// Get information about a particular audio device.
