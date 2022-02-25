@@ -50,25 +50,94 @@ pub struct AudioBackendInfo {
     /// (i.e. "1.2.10")
     pub version: Option<String>,
 
-    /// If this is true, then it means this backend is running on this system.
-    /// (For example, if this backend is Jack and the Jack server is not currently
-    /// running on the system, then this will be false.)
-    pub running: bool,
-
-    /// The devices that are available in this backend.
-    ///
-    /// Please note that these are not necessarily each physical device in the
-    /// system. For example, in backends like Jack and CoreAudio, the whole system
-    /// acts like a single "duplex device" which is the audio server itself.
-    pub devices: Vec<AudioDeviceInfo>,
-
-    /// The index of the preferred/best default device for this backend.
-    ///
-    /// This will be `None` if the preferred device is not known at this time.
-    pub default_device: Option<usize>,
+    /// The running status of this backend, along with all the available devices
+    /// and their configurations.
+    pub status: AudioBackendStatus,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl AudioBackendInfo {
+    /// The index of the preferred/default device.
+    ///
+    /// This will be `None` if the backend is not running or if the default
+    /// device is not known.
+    pub fn default_device_i(&self) -> Option<usize> {
+        self.status.default_device_i()
+    }
+
+    /// Get the info of a particular audio device.
+    ///
+    /// This will be `None` if the backend is not running or if the given
+    /// index is out of bounds.
+    pub fn device_info(&self, index: usize) -> Option<&AudioDeviceInfo> {
+        self.status.device_info(index)
+    }
+}
+
+/// The running status of this backend, along with all the available devices
+/// and their configurations.
+#[derive(Debug, Clone)]
+pub enum AudioBackendStatus {
+    /// The audio backend is not running/or is not available.
+    NotRunning,
+
+    /// The audio backend is running, but no devices were found.
+    RunningButNoDevices,
+
+    /// The audio backend is running.
+    ///
+    /// Also, with this backend, showing the end-user a list of available devices
+    /// is irrelevant because this backend only ever has one default "system-wide"
+    /// device that is always selected.
+    ///
+    /// For example, in backends like Jack and CoreAudio, the whole system
+    /// acts like a single "duplex device" which is the audio server itself.
+    RunningWithSystemWideDevice(AudioDeviceInfo),
+
+    /// The audio backend is running with a list of available devices to choose from.
+    Running {
+        /// The devices that are available in this backend.
+        ///
+        /// Please note that these are not necessarily each physical device in the
+        /// system. For example, in backends like Jack and CoreAudio, the whole system
+        /// acts like a single "duplex device" which is the audio server itself.
+        devices: Vec<AudioDeviceInfo>,
+
+        /// The index of the preferred/best default device for this backend.
+        ///
+        /// This will be `None` if the preferred device is not known at this time.
+        default_i: Option<usize>,
+    },
+}
+
+impl AudioBackendStatus {
+    /// The index of the preferred/default device.
+    ///
+    /// This will be `None` if the backend is not running or if the default
+    /// device is not known.
+    pub fn default_device_i(&self) -> Option<usize> {
+        match self {
+            AudioBackendStatus::RunningWithSystemWideDevice(_) => Some(0),
+            AudioBackendStatus::Running { default_i, .. } => *default_i,
+            _ => None,
+        }
+    }
+
+    /// Get the info of a particular audio device.
+    ///
+    /// This will be `None` if the backend is not running or if the given
+    /// index is out of bounds.
+    pub fn device_info(&self, index: usize) -> Option<&AudioDeviceInfo> {
+        match self {
+            // Always return the single "system-wide" device regardless of index.
+            AudioBackendStatus::RunningWithSystemWideDevice(device_info) => Some(device_info),
+            // Get the device info at the requested index.
+            AudioBackendStatus::Running { devices, .. } => devices.get(index),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DeviceID {
     /// The name of this device.
     pub name: String,
@@ -158,6 +227,7 @@ impl AudioBackend {
         }
     }
 
+    /*
     /// If this is true, then it means that this backend supports creating
     /// virtual ports that can be connected later.
     pub fn supports_creating_virtual_ports(&self) -> bool {
@@ -190,6 +260,7 @@ impl AudioBackend {
             */
         }
     }
+    */
 
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -315,20 +386,13 @@ pub struct AudioDeviceInfo {
     ///
     /// This is irrelevant for ASIO devices because the buffer size is configured
     /// through the configuration GUI application for that device.
-    pub sample_rates: Vec<u32>,
+    pub sample_rates: SampleRateInfo,
 
-    /// The default/preferred sample rate for this audio device.
+    /// Information on the buffer/block size options.
     ///
     /// This is irrelevant for ASIO devices because the buffer size is configured
     /// through the configuration GUI application for that device.
-    pub default_sample_rate: u32,
-
-    /// The supported range of fixed buffer/block sizes for this device. If the device
-    /// doesn't support fixed-size buffers then this will be `None`.
-    ///
-    /// This is irrelevant for ASIO devices because the buffer size is configured
-    /// through the configuration GUI application for that device.
-    pub fixed_buffer_size_range: Option<FixedBufferSizeRange>,
+    pub buffer_sizes: AudioBufferSizeInfo,
 
     /// The default channel layout of the input ports for this device.
     pub default_input_layout: DefaultChannelLayout,
@@ -363,39 +427,93 @@ pub struct AsioDeviceInfo {
     pub fixed_buffer_size: u32,
 }
 
-/// The range of possible fixed sizes of buffers/blocks for an audio device.
+/// The range of possible buffer/block sizes for an audio device.
 #[derive(Debug, Clone)]
-pub struct FixedBufferSizeRange {
-    pub mode: FixedBufferRangeMode,
+pub enum AudioBufferSizeInfo {
+    /// The buffer/block size cannot be known at this time, and most likely
+    /// won't be a fixed size when run.
+    Unknown,
 
-    /// The default/preferred fixed buffer size for this device.
-    pub default: u32,
+    /// The buffer/block size cannot be configured to a specific fixed size,
+    /// and instead will alternate somewhere between these two bounds when
+    /// run (if these bounds are even known).
+    UnconfigurableNotFixed {
+        /// The minimum buffer/block size (inclusive).
+        ///
+        /// This will be "unkown" if the minumum size is not known.
+        min: String,
+        /// The maximum buffer/block size (inclusive).
+        ///
+        /// This will be "unkown" if the maximum size is not known.
+        max: String,
+    },
+
+    /// The buffer/block size cannot be configured to a specific fixed size,
+    /// but instead will use the single given fixed size.
+    UnconfigurableFixed(u32),
+
+    /// A set list of available fixed buffer/block sizes
+    FixedList {
+        /// The list of available fixed buffer/block sizes
+        options: Vec<u32>,
+
+        /// The ***index*** of the default buffer/block size
+        default_i: usize,
+    },
 }
 
+/// The range of possible sample rates for an audio device.
 #[derive(Debug, Clone)]
-pub enum FixedBufferRangeMode {
-    /// A set list of available buffer sizes
-    List(Vec<u32>),
+pub enum SampleRateInfo {
+    /// The sample rate cannot be known at this time.
+    Unknown,
 
-    /// The buffer size can be any number between these two values (inclusive)
-    Range { min: u32, max: u32 },
+    /// The sample rate cannot be configured to a specific value, but
+    /// instead will use the single given value.
+    Unconfigurable(u32),
+
+    /// A set list of available sample rates
+    List {
+        /// The list of available sample rates
+        options: Vec<u32>,
+
+        /// The ***index*** of the default sample rate
+        default_i: usize,
+    },
 }
 
-/// The default channel layout of the ports for an audio device.
-///
-/// These include the index of each port for each channel.
+/// The layout of audio channels
 #[non_exhaustive]
-#[derive(Debug, Clone)]
-pub enum DefaultChannelLayout {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChannelLayout {
+    /// The device has no ports
+    Empty,
+
     /// The device has not specified the default channel layout of its ports.
     Unspecified,
 
-    Mono(usize),
-    Stereo {
-        left: usize,
-        right: usize,
-    },
+    /// Single channel
+    Mono,
+
+    /// [left, right]
+    Stereo,
     // TODO: More channel layouts
+}
+
+/// The default layout of audio channels
+#[derive(Debug, Clone)]
+pub struct DefaultChannelLayout {
+    /// The layout of audio channels
+    pub layout: ChannelLayout,
+
+    /// The index of each device port for each channel, in order.
+    pub device_ports: Vec<usize>,
+}
+
+impl DefaultChannelLayout {
+    pub fn empty() -> Self {
+        Self { layout: ChannelLayout::Empty, device_ports: Vec::new() }
+    }
 }
 
 #[cfg(feature = "midi")]
@@ -411,26 +529,35 @@ pub struct MidiBackendInfo {
     /// (i.e. "1.2.10")
     pub version: Option<String>,
 
-    /// If this is true, then it means this backend is running on this system.
-    /// (For example, if this backend is Jack and the Jack server is not currently
-    /// running on the system, then this will be false.)
-    pub running: bool,
+    /// The running status of this backend, along with all the available devices
+    /// and their configurations.
+    pub status: MidiBackendStatus,
+}
 
-    /// The list of available input MIDI devices
-    pub in_devices: Vec<MidiDeviceInfo>,
+/// The running status of this backend, along with all the available devices
+/// and their configurations.
+#[derive(Debug, Clone)]
+pub enum MidiBackendStatus {
+    /// The midi backend is not running/or is not available.
+    NotRunning,
 
-    /// The list of available output MIDI devices
-    pub out_devices: Vec<MidiDeviceInfo>,
+    /// The midi backend is running, but no devices were found.
+    RunningButNoDevices,
 
-    /// The index of the preferred/best default input device for this backend.
-    ///
-    /// This will be `None` if the preferred device is not known at this time.
-    pub default_in_device: Option<usize>,
+    /// The midi backend is running with a list of available devices to choose from.
+    Running {
+        /// The input devices that are available in this backend.
+        in_devices: Vec<MidiDeviceInfo>,
 
-    /// The index of the preferred/best default output device for this backend.
-    ///
-    /// This will be `None` if the preferred device is not known at this time.
-    pub default_out_device: Option<usize>,
+        /// The output devices that are available in this backend.
+        out_devices: Vec<MidiDeviceInfo>,
+
+        /// The index of the preferred/best default input device for this backend.
+        default_in_i: Option<usize>,
+
+        /// The index of the preferred/best default output device for this backend.
+        default_out_i: Option<usize>,
+    },
 }
 
 #[cfg(feature = "midi")]

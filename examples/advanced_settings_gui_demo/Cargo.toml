@@ -1,5 +1,5 @@
 [package]
-name = "settings_gui_demo"
+name = "advanced_settings_gui_demo"
 version = "0.1.0"
 edition = "2021"
 publish = false

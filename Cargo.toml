@@ -21,7 +21,7 @@ asio = []
 
 [workspace]
 members = [
-    "examples/settings_gui_demo",
+    "examples/advanced_settings_gui_demo",
 ]
 
 [dependencies]

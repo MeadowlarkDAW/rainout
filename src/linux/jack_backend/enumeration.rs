@@ -1,6 +1,6 @@
 use crate::{
-    AudioBackend, AudioBackendInfo, AudioDeviceInfo, DefaultChannelLayout, DeviceID,
-    FixedBufferRangeMode, FixedBufferSizeRange,
+    AudioBackend, AudioBackendInfo, AudioBackendStatus, AudioBufferSizeInfo, AudioDeviceInfo,
+    ChannelLayout, DefaultChannelLayout, DeviceID, MidiBackendStatus, SampleRateInfo,
 };
 
 #[cfg(feature = "midi")]
@@ -28,9 +28,12 @@ pub fn enumerate_audio_backend() -> AudioBackendInfo {
                 }
             }
             let default_input_layout = if !system_audio_in_ports.is_empty() {
-                DefaultChannelLayout::Mono(default_in_port)
+                DefaultChannelLayout {
+                    layout: ChannelLayout::Mono,
+                    device_ports: vec![default_in_port],
+                }
             } else {
-                DefaultChannelLayout::Unspecified
+                DefaultChannelLayout::empty()
             };
 
             // Find index of default out left port.
@@ -53,15 +56,18 @@ pub fn enumerate_audio_backend() -> AudioBackendInfo {
                 if system_audio_in_ports.len() == 1
                     || default_out_port_left == default_out_port_right
                 {
-                    DefaultChannelLayout::Mono(default_out_port_left)
+                    DefaultChannelLayout {
+                        layout: ChannelLayout::Mono,
+                        device_ports: vec![default_out_port_left],
+                    }
                 } else {
-                    DefaultChannelLayout::Stereo {
-                        left: default_out_port_left,
-                        right: default_out_port_right,
+                    DefaultChannelLayout {
+                        layout: ChannelLayout::Stereo,
+                        device_ports: vec![default_out_port_left, default_out_port_right],
                     }
                 }
             } else {
-                DefaultChannelLayout::Unspecified
+                DefaultChannelLayout::empty()
             };
 
             // Only one sample rate is available which is the sample rate configured
@@ -77,12 +83,8 @@ pub fn enumerate_audio_backend() -> AudioBackendInfo {
                 id: DeviceID { name: String::from(JACK_DEVICE_NAME), unique_id: None },
                 in_ports: system_audio_in_ports,
                 out_ports: system_audio_out_ports,
-                sample_rates: vec![sample_rate],
-                default_sample_rate: sample_rate,
-                fixed_buffer_size_range: Some(FixedBufferSizeRange {
-                    mode: FixedBufferRangeMode::List(vec![buffer_size]),
-                    default: buffer_size,
-                }),
+                sample_rates: SampleRateInfo::Unconfigurable(sample_rate),
+                buffer_sizes: AudioBufferSizeInfo::UnconfigurableFixed(buffer_size),
                 default_input_layout,
                 default_output_layout,
             };
@@ -90,9 +92,7 @@ pub fn enumerate_audio_backend() -> AudioBackendInfo {
             return AudioBackendInfo {
                 backend: AudioBackend::JackLinux,
                 version: None,
-                running: true,
-                devices: vec![device],
-                default_device: Some(0),
+                status: AudioBackendStatus::RunningWithSystemWideDevice(device),
             };
         }
         Err(e) => {
@@ -103,9 +103,7 @@ pub fn enumerate_audio_backend() -> AudioBackendInfo {
     AudioBackendInfo {
         backend: AudioBackend::JackLinux,
         version: None,
-        running: false,
-        devices: Vec::new(),
-        default_device: None,
+        status: AudioBackendStatus::NotRunning,
     }
 }
 
@@ -137,8 +135,7 @@ pub fn enumerate_midi_backend() -> MidiBackendInfo {
                     break;
                 }
             }
-            let default_in_device =
-                if in_devices.is_empty() { None } else { Some(default_in_port) };
+            let default_in_i = if in_devices.is_empty() { None } else { Some(default_in_port) };
 
             // Find index of the default out port.
             let mut default_out_port = 0; // Fallback to first available port.
@@ -151,17 +148,25 @@ pub fn enumerate_midi_backend() -> MidiBackendInfo {
                     break;
                 }
             }
-            let default_out_device =
-                if out_devices.is_empty() { None } else { Some(default_out_port) };
+            let default_out_i = if out_devices.is_empty() { None } else { Some(default_out_port) };
+
+            if in_devices.is_empty() && out_devices.is_empty() {
+                return MidiBackendInfo {
+                    backend: MidiBackend::JackLinux,
+                    version: None,
+                    status: MidiBackendStatus::RunningButNoDevices,
+                };
+            }
 
             return MidiBackendInfo {
                 backend: MidiBackend::JackLinux,
                 version: None,
-                running: true,
-                in_devices,
-                out_devices,
-                default_in_device,
-                default_out_device,
+                status: MidiBackendStatus::Running {
+                    in_devices,
+                    out_devices,
+                    default_in_i,
+                    default_out_i,
+                },
             };
         }
         Err(e) => {
@@ -172,10 +177,6 @@ pub fn enumerate_midi_backend() -> MidiBackendInfo {
     MidiBackendInfo {
         backend: MidiBackend::JackLinux,
         version: None,
-        running: false,
-        in_devices: Vec::new(),
-        out_devices: Vec::new(),
-        default_in_device: None,
-        default_out_device: None,
+        status: MidiBackendStatus::NotRunning,
     }
 }
