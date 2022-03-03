@@ -111,6 +111,19 @@ pub enum AudioDeviceOptions {
     },
 }
 
+#[cfg(feature = "serde-config")]
+#[derive(Debug, Clone, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+/// The name/ID of a device
+pub struct DeviceID {
+    /// The name of the device
+    pub name: String,
+
+    /// The unique identifier of this device (if one is available). This
+    /// is usually more reliable than just the name of the device.
+    pub identifier: Option<String>,
+}
+
+#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq, Hash)]
 /// The name/ID of a device
 pub struct DeviceID {

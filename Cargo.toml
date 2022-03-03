@@ -14,10 +14,11 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["midi", "jack-linux"]
+default = ["midi", "jack-linux", "serde-config"]
 midi = []
 jack-linux = ["jack"]
 asio = []
+serde-config = ["serde"]
 
 [workspace]
 members = [
@@ -26,6 +27,7 @@ members = [
 [dependencies]
 log = "0.4"
 ringbuf = "0.2"
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # jack = { version = "0.9", optional = true }
