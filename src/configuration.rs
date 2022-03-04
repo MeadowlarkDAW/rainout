@@ -2,6 +2,9 @@ use std::fmt::Debug;
 
 use crate::DeviceID;
 
+#[cfg(feature = "midi")]
+use crate::MidiControlScheme;
+
 #[cfg(feature = "serde-config")]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 /// Specifies whether to use a specific configuration or to automatically
@@ -325,7 +328,7 @@ pub struct MidiConfig {
     /// configuration of input ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI inputs.
-    pub input_ports: AutoOption<Vec<String>>,
+    pub in_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
 
     /// The names of the MIDI output ports to use.
     ///
@@ -336,7 +339,7 @@ pub struct MidiConfig {
     /// configuration of output ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI outputs.
-    pub output_ports: AutoOption<Vec<String>>,
+    pub out_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
 }
 
 #[cfg(feature = "midi")]
@@ -359,7 +362,7 @@ pub struct MidiConfig {
     /// configuration of input ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI inputs.
-    pub input_ports: AutoOption<Vec<String>>,
+    pub in_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
 
     /// The names of the MIDI output ports to use.
     ///
@@ -370,15 +373,45 @@ pub struct MidiConfig {
     /// configuration of output ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI outputs.
-    pub output_ports: AutoOption<Vec<String>>,
+    pub out_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
 }
 
 impl Default for MidiConfig {
     fn default() -> Self {
         MidiConfig {
             midi_backend: AutoOption::Auto,
-            input_ports: AutoOption::Auto,
-            output_ports: AutoOption::Use(Vec::new()),
+            in_device_ports: AutoOption::Auto,
+            out_device_ports: AutoOption::Use(Vec::new()),
         }
     }
+}
+
+#[cfg(feature = "midi")]
+#[cfg(feature = "serde-config")]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// The configuration of a MIDI device port
+pub struct MidiDevicePortConfig {
+    /// The name/ID of the MIDI device to use
+    pub device_id: DeviceID,
+
+    /// The index of the port on the device
+    pub port_index: usize,
+
+    /// The control scheme to use for this port
+    pub control_scheme: MidiControlScheme,
+}
+
+#[cfg(feature = "midi")]
+#[cfg(not(feature = "serde-config"))]
+#[derive(Debug, Clone, PartialEq)]
+/// The configuration of a MIDI device port
+pub struct MidiDevicePortConfig {
+    /// The name/ID of the MIDI device to use
+    pub device_id: DeviceID,
+
+    /// The index of the port on the device
+    pub port_index: usize,
+
+    /// The control scheme to use for this port
+    pub control_scheme: MidiControlScheme,
 }

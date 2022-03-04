@@ -1,9 +1,11 @@
+use crate::platform;
+
 /// Returns the list available audio backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
 pub fn available_audio_backends() -> &'static [&'static str] {
-    todo!()
+    platform::available_audio_backends()
 }
 
 #[cfg(feature = "midi")]
@@ -12,7 +14,7 @@ pub fn available_audio_backends() -> &'static [&'static str] {
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
 pub fn available_midi_backends() -> &'static [&'static str] {
-    todo!()
+    platform::available_midi_backends()
 }
 
 /// Returns the list of available audio devices for the given backend.
@@ -20,7 +22,7 @@ pub fn available_midi_backends() -> &'static [&'static str] {
 /// This will return an error if the backend with the given name could
 /// not be found.
 pub fn enumerate_audio_backend(backend: &str) -> Result<AudioBackendOptions, ()> {
-    todo!()
+    platform::enumerate_audio_backend(backend)
 }
 
 /// Returns the configuration options for the given device.
@@ -31,7 +33,7 @@ pub fn enumerate_audio_device(
     backend: &str,
     device: &DeviceID,
 ) -> Result<AudioDeviceConfigOptions, ()> {
-    todo!()
+    platform::enumerate_audio_device(backend, device)
 }
 
 #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -40,8 +42,34 @@ pub fn enumerate_audio_device(
 ///
 /// This will return an error if Jack is not installed on the system
 /// or if the Jack server is not running.
-pub fn enumerate_jack_audio_device() -> Result<JackAudioDeviceOptions, ()> {
-    todo!()
+pub fn enumerate_jack_audio_device(
+) -> Result<JackAudioDeviceOptions, crate::error::JackEnumerationError> {
+    #[cfg(target_os = "linux")]
+    {
+        #[cfg(feature = "jack-linux")]
+        return platform::enumerate_jack_audio_device();
+
+        #[cfg(not(feature = "jack-linux"))]
+        return Err(crate::error::JackEnumerationError::NotEnabledForPlatform);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        #[cfg(feature = "jack-macos")]
+        return platform::enumerate_jack_audio_device();
+
+        #[cfg(not(feature = "jack-macos"))]
+        return Err(crate::error::JackEnumerationError::NotEnabledForPlatform);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        #[cfg(feature = "jack-windows")]
+        return platform::enumerate_jack_audio_device();
+
+        #[cfg(not(feature = "jack-windows"))]
+        return Err(crate::error::JackEnumerationError::NotEnabledForPlatform);
+    }
 }
 
 #[cfg(feature = "asio")]
@@ -50,7 +78,7 @@ pub fn enumerate_jack_audio_device() -> Result<JackAudioDeviceOptions, ()> {
 ///
 /// This will return an error if the device could not be found.
 pub fn enumerate_asio_audio_device(device: &DeviceID) -> Result<AsioAudioDeviceOptions, ()> {
-    todo!()
+    platform::enumerate_asio_audio_device(device)
 }
 
 #[cfg(feature = "midi")]
@@ -59,7 +87,7 @@ pub fn enumerate_asio_audio_device(device: &DeviceID) -> Result<AsioAudioDeviceO
 /// This will return an error if the backend with the given name could
 /// not be found.
 pub fn enumerate_midi_backend(backend: &str) -> Result<MidiBackendOptions, ()> {
-    todo!()
+    platform::enumerate_midi_backend(backend)
 }
 
 #[derive(Debug, Clone)]
@@ -169,7 +197,7 @@ pub struct AudioDeviceConfigOptions {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 /// The channel layout of the audio ports
 pub enum ChannelLayout {
     /// The device has not specified the channel layout of the audio ports
@@ -186,6 +214,8 @@ pub enum ChannelLayout {
     /// The special (but fairly common) case where the device has two stereo
     /// output channels: one for speakers and one for headphones
     StereoX2SpeakerHeadphone,
+    /// Some other configuration not listed.
+    Other(String),
     // TODO: More channel layouts
 }
 
@@ -255,6 +285,8 @@ pub struct AsioAudioDeviceOptions {
 
 #[cfg(feature = "midi")]
 #[derive(Debug, Clone)]
+/// Information about a MIDI backend, including its available devices
+/// and configurations
 pub struct MidiBackendOptions {
     /// The name of this MIDI backend
     pub name: &'static str,
@@ -262,10 +294,10 @@ pub struct MidiBackendOptions {
     /// The version of this MIDI backend (if that information is available)
     pub version: Option<String>,
 
-    /// The names of the available input MIDI ports to select from
-    pub in_ports: Option<String>,
-    /// The names of the available output MIDI ports to select from
-    pub out_ports: Option<String>,
+    /// The names of the available input MIDI devices to select from
+    pub in_device_ports: Vec<MidiDevicePortOptions>,
+    /// The names of the available output MIDI devices to select from
+    pub out_device_ports: Vec<MidiDevicePortOptions>,
 
     /// The index of the default/preferred input MIDI port for the backend
     ///
@@ -277,4 +309,56 @@ pub struct MidiBackendOptions {
     /// This will be `None` if no default output port could be
     /// determined.
     pub default_out_port: Option<usize>,
+}
+
+#[cfg(feature = "midi")]
+#[derive(Debug, Clone)]
+/// Information and configuration options for a MIDI device port
+pub struct MidiDevicePortOptions {
+    /// The name/ID of this device
+    pub id: DeviceID,
+
+    /// The index of this port for this device
+    pub port_index: usize,
+
+    /// The type of control scheme that this port uses
+    pub control_type: MidiControlScheme,
+}
+
+#[cfg(feature = "midi")]
+#[cfg(feature = "serde-config")]
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+/// The type of control scheme that this port supports
+pub enum MidiControlScheme {
+    /// Supports only MIDI version 1
+    Midi1,
+
+    #[cfg(feature = "midi2")]
+    /// Supports MIDI version 2 (and by proxy also supports MIDI version 1)
+    Midi2,
+    // TODO: Midi versions inbetween 1.0 and 2.0?
+    // TODO: OSC devices?
+}
+
+#[cfg(feature = "midi")]
+#[cfg(not(feature = "serde-config"))]
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The type of control scheme that this port supports
+pub enum MidiControlScheme {
+    /// Supports only MIDI version 1
+    Midi1,
+
+    #[cfg(feature = "midi2")]
+    /// Supports MIDI version 2 (and by proxy also supports MIDI version 1)
+    Midi2,
+    // TODO: Midi versions inbetween 1.0 and 2.0?
+    // TODO: OSC devices?
+}
+
+impl Default for MidiControlScheme {
+    fn default() -> Self {
+        MidiControlScheme::Midi1
+    }
 }

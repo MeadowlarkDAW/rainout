@@ -11,6 +11,8 @@ pub struct ErrorBehavior {
     pub midi_backend_not_found: NotFoundBehavior,
     #[cfg(feature = "midi")]
     pub midi_device_not_found: MidiDeviceNotFoundBehavior,
+    #[cfg(feature = "midi")]
+    pub midi_control_scheme_not_supported: NotFoundBehavior,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

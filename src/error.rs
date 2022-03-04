@@ -74,34 +74,66 @@ impl fmt::Display for RunConfigError {
 
 #[derive(Debug, Clone)]
 pub enum ChangeAudioPortConfigError {
-    // TODO
+    NotSupportedByBackend, // TODO: more errors?
 }
 impl Error for ChangeAudioPortConfigError {}
 impl fmt::Display for ChangeAudioPortConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            ChangeAudioPortConfigError::NotSupportedByBackend => {
+                write!(f, "Failed to change audio port config: Not supported on this backend")
+            }
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ChangeAudioBufferSizeError {
-    // TODO
+    NotSupportedByBackend, // TODO: more errors?
 }
 impl Error for ChangeAudioBufferSizeError {}
 impl fmt::Display for ChangeAudioBufferSizeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            ChangeAudioBufferSizeError::NotSupportedByBackend => {
+                write!(f, "Failed to change buffer size config: Not supported on this backend")
+            }
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ChangeMidiDeviceConfigError {
-    // TODO
+    NotSupportedByBackend, // TODO: more errors?
 }
 impl Error for ChangeMidiDeviceConfigError {}
 impl fmt::Display for ChangeMidiDeviceConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            ChangeMidiDeviceConfigError::NotSupportedByBackend => {
+                write!(f, "Failed to change MIDI device config: Not supported on this backend")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum JackEnumerationError {
+    /// Jack is not installed on this system.
+    NotInstalled,
+    /// Jack server is not running.
+    NotRunning,
+    /// This application has not enabled Jack for this platform.
+    NotEnabledForPlatform,
+}
+impl Error for JackEnumerationError {}
+impl fmt::Display for JackEnumerationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JackEnumerationError::NotInstalled => write!(f, "Failed to enumerate backend: Jack is not installed on this system"),
+            JackEnumerationError::NotRunning => write!(f, "Failed to enumerate backend: The Jack server is not running"),
+            JackEnumerationError::NotEnabledForPlatform => write!(f, "Failed to enumerate backend: This application has not enabled Jack for this platform")
+        }
     }
 }
 

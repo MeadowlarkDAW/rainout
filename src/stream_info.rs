@@ -1,5 +1,8 @@
 use crate::DeviceID;
 
+#[cfg(feature = "midi")]
+use crate::MidiControlScheme;
+
 /// Information about a running stream.
 #[derive(Debug, Clone)]
 pub struct StreamInfo {
@@ -95,13 +98,13 @@ pub struct MidiStreamInfo {
     ///
     /// The buffers presented in the `ProcessInfo::midi_inputs` will
     /// appear in this exact same order.
-    pub in_devices: Vec<StreamMidiDeviceInfo>,
+    pub in_device_ports: Vec<StreamMidiPortInfo>,
 
     /// The names & status of the MIDI output devices.
     ///
     /// The buffers presented in the `ProcessInfo::midi_outputs` will
     /// appear in this exact same order.
-    pub out_devices: Vec<StreamMidiDeviceInfo>,
+    pub out_device_ports: Vec<StreamMidiPortInfo>,
 
     /// The allocated size for each MIDI buffer.
     pub midi_buffer_size: usize,
@@ -109,8 +112,15 @@ pub struct MidiStreamInfo {
 
 #[cfg(feature = "midi")]
 #[derive(Debug, Clone)]
-pub struct StreamMidiDeviceInfo {
+pub struct StreamMidiPortInfo {
+    /// The name/ID of this device
     pub id: DeviceID,
+
+    /// The index of this port for this device
+    pub port_index: usize,
+
+    /// The control scheme being used.
+    pub control_scheme: MidiControlScheme,
 
     /// If the system device was found and is working correctly, this will
     /// be true. Otherwise if the system device was not found or it is not

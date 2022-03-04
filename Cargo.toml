@@ -16,6 +16,7 @@ readme = "README.md"
 [features]
 default = ["midi", "jack-linux", "serde-config"]
 midi = []
+midi2 = []
 jack-linux = ["jack"]
 asio = []
 serde-config = ["serde"]
