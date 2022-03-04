@@ -2,7 +2,9 @@ use ringbuf::{Consumer, RingBuffer};
 
 use crate::{error::StreamError, DeviceID};
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
+/// A message sent from the audio thread.
 pub enum StreamMsg {
     /// An audio device was unplugged while the stream was running. Any connected
     /// ports will input/output silence.
