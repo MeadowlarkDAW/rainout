@@ -1,443 +1,280 @@
-use crate::platform;
-
-/// Returns the available audio backends for this platform.
+/// Returns the list available audio backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
-pub fn available_audio_backends() -> &'static [AudioBackend] {
-    platform::available_audio_backends()
+pub fn available_audio_backends() -> &'static [&'static str] {
+    todo!()
 }
 
 #[cfg(feature = "midi")]
-/// Returns the available midi backends for this platform.
+/// Returns the list available midi backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
-pub fn available_midi_backends() -> &'static [MidiBackend] {
-    platform::available_midi_backends()
+pub fn available_midi_backends() -> &'static [&'static str] {
+    todo!()
 }
 
-/// Get information about a particular audio backend and its devices.
+/// Returns the list of available audio devices for the given backend.
 ///
-/// This will update the list of available devices as well as the the
-/// status of whether or not this backend is running.
+/// This will return an error if the backend with the given name could
+/// not be found.
+pub fn enumerate_audio_backend(backend: &str) -> Result<AudioBackendOptions, ()> {
+    todo!()
+}
+
+/// Returns the configuration options for the given device.
 ///
-/// This will return an error if the backend is not available on this system.
-pub fn enumerate_audio_backend(backend: AudioBackend) -> Result<AudioBackendInfo, ()> {
-    platform::enumerate_audio_backend(backend)
+/// This will return an error if the backend or the device could not
+/// be found.
+pub fn enumerate_audio_device(
+    backend: &str,
+    device: &DeviceID,
+) -> Result<AudioDeviceConfigOptions, ()> {
+    todo!()
 }
 
-#[cfg(feature = "midi")]
-/// Get information about a particular midi backend and its devices.
+#[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+/// Returns the configuration options for "monolithic" system-wide Jack
+/// audio device.
 ///
-/// This will update the list of available devices as well as the the
-/// status of whether or not this backend is running.
-///
-/// This will return an error if the backend is not available on this system.
-pub fn enumerate_midi_backend(backend: MidiBackend) -> Result<MidiBackendInfo, ()> {
-    platform::enumerate_midi_backend(backend)
-}
-
-/// Information about a particular audio backend, including a list of the
-/// available devices.
-#[derive(Debug, Clone)]
-pub struct AudioBackendInfo {
-    /// The type of backend.
-    pub backend: AudioBackend,
-
-    /// The version of this backend (if there is one available)
-    ///
-    /// (i.e. "1.2.10")
-    pub version: Option<String>,
-
-    /// If this is true, then it means this backend is running on this system.
-    /// (For example, if this backend is Jack and the Jack server is not currently
-    /// running on the system, then this will be false.)
-    pub running: bool,
-
-    /// The devices that are available in this backend.
-    ///
-    /// Please note that these are not necessarily each physical device in the
-    /// system. For example, in backends like Jack and CoreAudio, the whole system
-    /// acts like a single "duplex device" which is the audio server itself.
-    pub devices: Vec<AudioDeviceInfo>,
-
-    /// The index of the preferred/best default device for this backend.
-    ///
-    /// This will be `None` if the preferred device is not known at this time.
-    pub default_device: Option<usize>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DeviceID {
-    /// The name of this device.
-    pub name: String,
-
-    /// The unique identifier of this device (if one is available).
-    ///
-    /// This is usually more reliable than just using the name of
-    /// the device.
-    pub unique_id: Option<String>,
-}
-
-/// An audio backend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AudioBackend {
-    /// Pipewire on Linux
-    Pipewire,
-
-    #[cfg(feature = "jack-linux")]
-    /// Jack on Linux
-    JackLinux,
-
-    /*
-    #[cfg(feature = "alsa")]
-    /// Alsa on Linux
-    Alsa,
-
-    #[cfg(feature = "pulseaudio")]
-    /// Pulseaudio on Linux
-    Pulseaudio,
-    */
-    /// CoreAudio on Mac
-    CoreAudio,
-
-    /*
-    #[cfg(feature = "jack-macos")]
-    /// Jack on MacOS
-    JackMacOS,
-    */
-    /// WASAPI on Windows
-    Wasapi,
-
-    #[cfg(feature = "asio")]
-    /// ASIO on Windows
-    Asio,
-    /*
-    #[cfg(feature = "jack-windows")]
-    /// Jack on Windows
-    JackWindows,
-    */
-}
-
-impl AudioBackend {
-    /// If this is true, then it means it is relevant to actually show the available
-    /// devices as a list to select from in a settings GUI.
-    ///
-    /// In backends like Jack and CoreAudio which set this to false, there is only
-    /// ever one "system-wide duplex device" which is the audio server itself, and
-    /// thus showing this information in a settings GUI is irrelevant.
-    pub fn devices_are_relevant(&self) -> bool {
-        match self {
-            AudioBackend::Pipewire => false,
-
-            #[cfg(feature = "jack-linux")]
-            AudioBackend::JackLinux => false,
-
-            /*
-            #[cfg(feature = "alsa")]
-            AudioBackend::Alsa => true,
-
-            #[cfg(feature = "pulseaudio")]
-            AudioBackend::Pulseaudio => true,
-            */
-            AudioBackend::CoreAudio => false,
-
-            /*
-            #[cfg(feature = "jack-macos")]
-            AudioBackend::JackMacOS => false,
-            */
-            AudioBackend::Wasapi => true,
-
-            #[cfg(feature = "asio")]
-            AudioBackend::Asio => true,
-            /*
-            #[cfg(feature = "jack-windows")]
-            AudioBackend::JackWindows => false,
-            */
-        }
-    }
-
-    /// If this is true, then it means that this backend supports creating
-    /// virtual ports that can be connected later.
-    pub fn supports_creating_virtual_ports(&self) -> bool {
-        match self {
-            AudioBackend::Pipewire => true, // I think?
-
-            #[cfg(feature = "jack-linux")]
-            AudioBackend::JackLinux => true,
-
-            /*
-            #[cfg(feature = "alsa")]
-            AudioBackend::Alsa => false,
-
-            #[cfg(feature = "pulseaudio")]
-            AudioBackend::Pulseaudio => false,
-            */
-            AudioBackend::CoreAudio => false, // I think?
-
-            /*
-            #[cfg(feature = "jack-macos")]
-            AudioBackend::JackMacOS => true,
-            */
-            AudioBackend::Wasapi => false,
-
-            #[cfg(feature = "asio")]
-            AudioBackend::Asio => false,
-            /*
-            #[cfg(feature = "jack-windows")]
-            AudioBackend::JackWindows => true,
-            */
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AudioBackend::Pipewire => "Pipewire",
-
-            #[cfg(feature = "jack-linux")]
-            AudioBackend::JackLinux => "Jack",
-
-            /*
-            #[cfg(feature = "alsa")]
-            AudioBackend::Alsa => "Alsa",
-
-            #[cfg(feature = "pulseaudio")]
-            AudioBackend::Pulseaudio => "Pulseaudio",
-            */
-            AudioBackend::CoreAudio => "CoreAudio", // I think?
-
-            /*
-            #[cfg(feature = "jack-macos")]
-            AudioBackend::JackMacOS => "Jack",
-            */
-            AudioBackend::Wasapi => "WASAPI",
-
-            #[cfg(feature = "asio")]
-            Backend::Asio => "ASIO",
-            /*
-            #[cfg(feature = "jack-windows")]
-            AudioBackend::JackWindows => "JACK",
-            */
-        }
-    }
-}
-
-#[cfg(feature = "midi")]
-/// A midi backend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MidiBackend {
-    /// Pipewire on Linux
-    Pipewire,
-
-    #[cfg(feature = "jack-linux")]
-    /// Jack on Linux
-    JackLinux,
-
-    /*
-    #[cfg(feature = "alsa")]
-    /// Alsa on Linux
-    Alsa,
-
-    #[cfg(feature = "pulseaudio")]
-    /// Pulseaudio on Linux
-    Pulseaudio,
-    */
-    /// CoreAudio on Mac
-    CoreAudio,
-
-    /*
-    #[cfg(feature = "jack-macos")]
-    /// Jack on MacOS
-    JackMacOS,
-    */
-    /// WASAPI on Windows
-    Wasapi,
-
-    #[cfg(feature = "asio")]
-    /// ASIO on Windows
-    Asio,
-    /*
-    #[cfg(feature = "jack-windows")]
-    /// Jack on Windows
-    JackWindows,
-    */
-}
-
-impl MidiBackend {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            MidiBackend::Pipewire => "Pipewire",
-
-            #[cfg(feature = "jack-linux")]
-            MidiBackend::JackLinux => "Jack",
-
-            /*
-            #[cfg(feature = "alsa")]
-            MidiBackend::Alsa => "Alsa",
-
-            #[cfg(feature = "pulseaudio")]
-            MidiBackend::Pulseaudio => "Pulseaudio",
-            */
-            MidiBackend::CoreAudio => "CoreAudio", // I think?
-
-            /*
-            #[cfg(feature = "jack-macos")]
-            Backend::JackMacOS => "Jack",
-            */
-            MidiBackend::Wasapi => "WASAPI",
-
-            #[cfg(feature = "asio")]
-            MidiBackend::Asio => "ASIO",
-            /*
-            #[cfg(feature = "jack-windows")]
-            MidiBackend::JackWindows => "JACK",
-            */
-        }
-    }
-}
-
-/// Information about a particular audio device, including all its available
-/// configurations.
-#[derive(Debug, Clone)]
-pub struct AudioDeviceInfo {
-    pub id: DeviceID,
-
-    /// The names of the available input ports (one port per channel) on this device
-    /// (i.e. "mic_1", "mic_2", "system_input", etc.)
-    pub in_ports: Vec<String>,
-
-    /// The names of the available output ports (one port per channel) on this device
-    /// (i.e. "out_1", "speakers_out_left", "speakers_out_right", etc.)
-    pub out_ports: Vec<String>,
-
-    /// The available sample rates for this device.
-    ///
-    /// This is irrelevant for ASIO devices because the buffer size is configured
-    /// through the configuration GUI application for that device.
-    pub sample_rates: Vec<u32>,
-
-    /// The default/preferred sample rate for this audio device.
-    ///
-    /// This is irrelevant for ASIO devices because the buffer size is configured
-    /// through the configuration GUI application for that device.
-    pub default_sample_rate: u32,
-
-    /// The supported range of fixed buffer/block sizes for this device. If the device
-    /// doesn't support fixed-size buffers then this will be `None`.
-    ///
-    /// This is irrelevant for ASIO devices because the buffer size is configured
-    /// through the configuration GUI application for that device.
-    pub fixed_buffer_size_range: Option<FixedBufferSizeRange>,
-
-    /// The default channel layout of the input ports for this device.
-    pub default_input_layout: DefaultChannelLayout,
-
-    /// The default channel layout of the output ports for this device.
-    pub default_output_layout: DefaultChannelLayout,
-
-    #[cfg(feature = "asio")]
-    /// If this audio device is an ASIO device, then this will contain extra
-    /// information about the device.
-    pub asio_info: Option<AsioDeviceInfo>,
+/// This will return an error if Jack is not installed on the system
+/// or if the Jack server is not running.
+pub fn enumerate_jack_audio_device() -> Result<JackAudioDeviceOptions, ()> {
+    todo!()
 }
 
 #[cfg(feature = "asio")]
-#[derive(Debug, Clone)]
-pub struct AsioDeviceInfo {
-    /// The path to the configuration GUI application for the device.
-    pub config_gui_path: std::path::PathBuf,
-
-    /// The sample rate that has been configured for this device.
-    ///
-    /// You will need to re-enumerate this device to get the new sample
-    /// rate after configuring through the device's configuration GUI
-    /// application.
-    pub sample_rate: u32,
-
-    /// The fixed buffer size that has been configured for this device.
-    ///
-    /// You will need to re-enumerate this device to get the new sample
-    /// rate after configuring through the device's configuration GUI
-    /// application.
-    pub fixed_buffer_size: u32,
-}
-
-/// The range of possible fixed sizes of buffers/blocks for an audio device.
-#[derive(Debug, Clone)]
-pub struct FixedBufferSizeRange {
-    pub mode: FixedBufferRangeMode,
-
-    /// The default/preferred fixed buffer size for this device.
-    pub default: u32,
-}
-
-#[derive(Debug, Clone)]
-pub enum FixedBufferRangeMode {
-    /// A set list of available buffer sizes
-    List(Vec<u32>),
-
-    /// The buffer size can be any number between these two values (inclusive)
-    Range { min: u32, max: u32 },
-}
-
-/// The default channel layout of the ports for an audio device.
+#[cfg(target_os = "windows")]
+/// Returns the configuration options for the given ASIO device.
 ///
-/// These include the index of each port for each channel.
-#[non_exhaustive]
-#[derive(Debug, Clone)]
-pub enum DefaultChannelLayout {
-    /// The device has not specified the default channel layout of its ports.
-    Unspecified,
+/// This will return an error if the device could not be found.
+pub fn enumerate_asio_audio_device(device: &DeviceID) -> Result<AsioAudioDeviceOptions, ()> {
+    todo!()
+}
 
-    Mono(usize),
-    Stereo {
-        left: usize,
-        right: usize,
+#[cfg(feature = "midi")]
+/// Returns the list of available midi devices for the given backend.
+///
+/// This will return an error if the backend with the given name could
+/// not be found.
+pub fn enumerate_midi_backend(backend: &str) -> Result<MidiBackendOptions, ()> {
+    todo!()
+}
+
+#[derive(Debug, Clone)]
+/// Information about an audio backend, including its available devices
+/// and configurations
+pub struct AudioBackendOptions {
+    /// The name of this audio backend
+    pub name: &'static str,
+
+    /// The version of this audio backend (if that information is available)
+    pub version: Option<String>,
+
+    /// The available audio devices to select from
+    pub device_options: AudioDeviceOptions,
+}
+
+#[derive(Debug, Clone)]
+/// The available audio devices to select from
+pub enum AudioDeviceOptions {
+    /// Only a single audio device can be selected from this list. These
+    /// devices may be output only, input only, or (most commonly)
+    /// duplex.
+    SingleDeviceOnly {
+        /// The available audio devices to select from.
+        options: Vec<DeviceID>,
     },
+
+    /// A single input and output device pair can be selected from this list.
+    LinkedInOutDevice {
+        /// The names/IDs of the available input devices to select from
+        input_devices: Vec<DeviceID>,
+        /// The names/IDs of the available output devices to select from
+        output_devices: Vec<DeviceID>,
+
+        /// The available configurations for this device pair
+        config_options: AudioDeviceConfigOptions,
+    },
+
+    #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+    /// There is a single "monolithic" system-wide Jack audio device
+    JackSystemWideDevice,
+
+    #[cfg(feature = "asio")]
+    #[cfg(target_os = "windows")]
+    /// A single ASIO device can be selected from this list.
+    SingleAsioDevice {
+        /// A single ASIO device can be selected from this list.
+        options: Vec<DeviceID>,
+    },
+}
+
+#[cfg(feature = "serde-config")]
+#[derive(Debug, Clone, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+/// The name/ID of a device
+pub struct DeviceID {
+    /// The name of the device
+    pub name: String,
+
+    /// The unique identifier of this device (if one is available). This
+    /// is usually more reliable than just the name of the device.
+    pub identifier: Option<String>,
+}
+
+#[cfg(not(feature = "serde-config"))]
+#[derive(Debug, Clone, PartialEq, Hash)]
+/// The name/ID of a device
+pub struct DeviceID {
+    /// The name of the device
+    pub name: String,
+
+    /// The unique identifier of this device (if one is available). This
+    /// is usually more reliable than just the name of the device.
+    pub identifier: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+/// The available configuration options for the audio device/devices
+pub struct AudioDeviceConfigOptions {
+    /// The available sample rates to choose from.
+    ///
+    /// If the available sample rates could not be determined at this time,
+    /// then this will be `None`.
+    pub sample_rates: Option<Vec<u32>>,
+
+    /// The available range of fixed block/buffer sizes
+    ///
+    /// If the device does not support fixed block/buffer sizes, then this
+    /// will be `None`.
+    pub block_sizes: Option<BlockSizeRange>,
+
+    /// The number of input audio ports available
+    pub num_input_ports: usize,
+    /// The number of output audio ports available
+    pub num_output_ports: usize,
+
+    /// The layout of the input audio ports
+    pub input_channel_layout: ChannelLayout,
+    /// The layout of the output audio ports
+    pub output_channel_layout: ChannelLayout,
+
+    /// If `true` then it means that the application can request to take
+    /// exclusive access of the device to improve latency.
+    ///
+    /// This is only relevant for WASAPI on Windows. This will always be
+    /// `false` on other backends and platforms.
+    pub can_take_exclusive_access: bool,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The channel layout of the audio ports
+pub enum ChannelLayout {
+    /// The device has not specified the channel layout of the audio ports
+    Unspecified,
+    /// The device has a single mono channel
+    Mono,
+    /// The device has multiple mono channels (i.e. multiple microphone
+    /// inputs)
+    MultiMono,
+    /// The device has a single stereo channel
+    Stereo,
+    /// The device has multiple stereo channels
+    MultiStereo,
+    /// The special (but fairly common) case where the device has two stereo
+    /// output channels: one for speakers and one for headphones
+    StereoX2SpeakerHeadphone,
     // TODO: More channel layouts
 }
 
-#[cfg(feature = "midi")]
-/// Information about a particular midi backend, including a list of the
-/// available devices.
+/// The range of possible block sizes for an audio device.
 #[derive(Debug, Clone)]
-pub struct MidiBackendInfo {
-    /// The type of backend.
-    pub backend: MidiBackend,
+pub struct BlockSizeRange {
+    /// The minimum buffer/block size that can be used (inclusive)
+    pub min: u32,
 
-    /// The version of this backend (if there is one available)
-    ///
-    /// (i.e. "1.2.10")
-    pub version: Option<String>,
+    /// The maximum buffer/block size that can be used (inclusive)
+    pub max: u32,
 
-    /// If this is true, then it means this backend is running on this system.
-    /// (For example, if this backend is Jack and the Jack server is not currently
-    /// running on the system, then this will be false.)
+    /// The default buffer/block size for this device
+    pub default: u32,
+}
+
+#[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+#[derive(Debug, Clone)]
+/// Information and configuration options for the "monolithic" system-wide
+/// Jack audio device
+pub struct JackAudioDeviceOptions {
+    /// If this is `false`, then it means that Jack is not installed on the
+    /// system and thus cannot be used.
+    pub installed_on_sytem: bool,
+
+    /// If this is `false`, then it means that Jack is installed but it is
+    /// not currently running on the system, and thus cannot be used until
+    /// the Jack server is started.
     pub running: bool,
 
-    /// The list of available input MIDI devices
-    pub in_devices: Vec<MidiDeviceInfo>,
+    /// The sample rate of the Jack device
+    pub sample_rate: u32,
 
-    /// The list of available output MIDI devices
-    pub out_devices: Vec<MidiDeviceInfo>,
+    /// The block size of the Jack device
+    pub block_size: u32,
 
-    /// The index of the preferred/best default input device for this backend.
+    /// The names of the available input ports to select from
+    pub input_ports: Vec<String>,
+    /// The names of the available output ports to select from
+    pub output_ports: Vec<String>,
+
+    /// The indexes of the default input ports, along with their channel
+    /// layout.
     ///
-    /// This will be `None` if the preferred device is not known at this time.
-    pub default_in_device: Option<usize>,
-
-    /// The index of the preferred/best default output device for this backend.
+    /// If no default input ports could be found, then this will be `None`.
+    pub default_input_ports: Option<(Vec<usize>, ChannelLayout)>,
+    /// The indexes of the default output ports, along with their channel
+    /// layout.
     ///
-    /// This will be `None` if the preferred device is not known at this time.
-    pub default_out_device: Option<usize>,
+    /// If no default output ports could be found, then this will be `None`.
+    pub default_output_ports: Option<(Vec<usize>, ChannelLayout)>,
+}
+
+#[cfg(feature = "asio")]
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone)]
+/// Information and configuration options for an ASIO audio device on
+/// Windows
+pub struct AsioAudioDeviceOptions {
+    /// The configuration options for this ASIO audio device
+    pub config_options: AudioDeviceConfigOptions,
+
+    /// The path the the executable that launches the settings GUI for
+    /// this ASIO device
+    pub settings_application: std::path::PathBuf,
 }
 
 #[cfg(feature = "midi")]
-/// Information about a particular midi device, including all its available
-/// configurations.
 #[derive(Debug, Clone)]
-pub struct MidiDeviceInfo {
-    pub id: DeviceID,
-    // TODO: More information about the MIDI device
+pub struct MidiBackendOptions {
+    /// The name of this MIDI backend
+    pub name: &'static str,
+
+    /// The version of this MIDI backend (if that information is available)
+    pub version: Option<String>,
+
+    /// The names of the available input MIDI ports to select from
+    pub in_ports: Option<String>,
+    /// The names of the available output MIDI ports to select from
+    pub out_ports: Option<String>,
+
+    /// The index of the default/preferred input MIDI port for the backend
+    ///
+    /// This will be `None` if no default input port could be
+    /// determined.
+    pub default_in_port: Option<usize>,
+    /// The index of the default/preferred output MIDI port for the backend
+    ///
+    /// This will be `None` if no default output port could be
+    /// determined.
+    pub default_out_port: Option<usize>,
 }

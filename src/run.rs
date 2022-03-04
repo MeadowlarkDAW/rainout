@@ -1,8 +1,6 @@
 use crate::error::{ChangeAudioBufferSizeError, ChangeAudioPortConfigError, RunConfigError};
 use crate::error_behavior::ErrorBehavior;
-use crate::{
-    platform, AudioBufferSizeConfig, Config, DeviceID, ProcessInfo, StreamInfo, StreamMsgChannel,
-};
+use crate::{DeviceID, ProcessInfo, RustyDawIoConfig, StreamInfo};
 
 #[cfg(feature = "midi")]
 use crate::error::ChangeMidiDeviceConfigError;
@@ -11,16 +9,16 @@ use crate::error::ChangeMidiDeviceConfigError;
 ///
 /// `None` will be returned if the latency is not known at this time or if the
 /// given config is invalid.
-pub fn estimated_latency(config: &Config) -> Option<u32> {
-    platform::estimated_latency(config)
+pub fn estimated_latency(config: &RustyDawIoConfig) -> Option<u32> {
+    todo!()
 }
 
 /// Get the sample rate of a particular configuration before running it.
 ///
 /// `None` will be returned if the sample rate is not known at this time or if the
 /// given config is invalid.
-pub fn sample_rate(config: &Config) -> Option<u32> {
-    platform::sample_rate(config)
+pub fn sample_rate(config: &RustyDawIoConfig) -> Option<u32> {
+    todo!()
 }
 
 /// A processor for a stream.
@@ -95,11 +93,11 @@ impl Default for RunOptions {
 /// If an error is returned, then it means the config failed to run and no audio
 /// thread was spawned.
 pub fn run<P: ProcessHandler>(
-    config: &Config,
+    config: &RustyDawIoConfig,
     options: &RunOptions,
     process_handler: P,
 ) -> Result<StreamHandle<P>, RunConfigError> {
-    platform::run(config, options, process_handler)
+    todo!()
 }
 
 /// The handle to a running audio/midi stream.
@@ -109,8 +107,7 @@ pub fn run<P: ProcessHandler>(
 pub struct StreamHandle<P: ProcessHandler> {
     /// The message channel that recieves notifications from the audio thread
     /// including any errors that have occurred.
-    pub messages: StreamMsgChannel,
-
+    //pub messages: StreamMsgChannel,
     pub(crate) platform_handle: Box<dyn PlatformStreamHandle<P>>,
 }
 
@@ -118,7 +115,7 @@ impl<P: ProcessHandler> StreamHandle<P> {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
     pub fn stream_info(&self) -> &StreamInfo {
-        self.platform_handle.stream_info()
+        todo!()
     }
 
     /// Change the audio port configuration while the audio thread is still running.
@@ -131,7 +128,7 @@ impl<P: ProcessHandler> StreamHandle<P> {
         audio_in_ports: Option<Vec<String>>,
         audio_out_ports: Option<Vec<String>>,
     ) -> Result<(), ChangeAudioPortConfigError> {
-        self.platform_handle.change_audio_port_config(audio_in_ports, audio_out_ports)
+        todo!()
     }
 
     /// Change the buffer size configuration while the audio thread is still running.
@@ -141,9 +138,9 @@ impl<P: ProcessHandler> StreamHandle<P> {
     /// effect on the running audio thread.
     pub fn change_audio_buffer_size_config(
         &mut self,
-        config: AudioBufferSizeConfig,
+        buffer_size: u32,
     ) -> Result<(), ChangeAudioBufferSizeError> {
-        self.platform_handle.change_audio_buffer_size_config(config)
+        todo!()
     }
 
     #[cfg(feature = "midi")]
@@ -157,7 +154,7 @@ impl<P: ProcessHandler> StreamHandle<P> {
         in_devices: Vec<DeviceID>,
         out_devices: Vec<DeviceID>,
     ) -> Result<(), ChangeMidiDeviceConfigError> {
-        self.platform_handle.change_midi_device_config(in_devices, out_devices)
+        todo!()
     }
 
     // It may be possible to also add `change_sample_rate_config()` here, but
@@ -166,20 +163,20 @@ impl<P: ProcessHandler> StreamHandle<P> {
     /// Returns whether or not this backend supports changing the audio bus
     /// configuration while the audio thread is running.
     pub fn can_change_audio_port_config(&self) -> bool {
-        self.platform_handle.can_change_audio_port_config()
+        todo!()
     }
 
     // Returns whether or not this backend supports changing the buffer size
     // configuration while the audio thread is running.
     pub fn can_change_audio_buffer_size_config(&self) -> bool {
-        self.platform_handle.can_change_audio_buffer_size_config()
+        todo!()
     }
 
     #[cfg(feature = "midi")]
     /// Returns whether or not this backend supports changing the midi device
     /// config while the audio thread is running.
     pub fn can_change_midi_device_config(&self) -> bool {
-        self.platform_handle.can_change_midi_device_config()
+        todo!()
     }
 }
 
@@ -206,7 +203,7 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     /// effect on the running audio thread.
     fn change_audio_buffer_size_config(
         &mut self,
-        config: AudioBufferSizeConfig,
+        buffer_size: u32,
     ) -> Result<(), ChangeAudioBufferSizeError>;
 
     #[cfg(feature = "midi")]

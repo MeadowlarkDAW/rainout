@@ -1,5 +1,5 @@
 /// Flags passed into the `run()` method that describe how to respond to
-/// certain errors,
+/// certain errors in the configuration,
 #[derive(Default, Debug, Clone)]
 pub struct ErrorBehavior {
     pub audio_backend_not_found: NotFoundBehavior,

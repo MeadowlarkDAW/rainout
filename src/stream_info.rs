@@ -1,13 +1,10 @@
-use crate::{AudioBackend, DeviceID};
-
-#[cfg(feature = "midi")]
-use crate::MidiBackend;
+use crate::DeviceID;
 
 /// Information about a running stream.
 #[derive(Debug, Clone)]
 pub struct StreamInfo {
-    /// The type of the audio backend.
-    pub audio_backend: AudioBackend,
+    /// The name of the audio backend.
+    pub audio_backend: String,
 
     /// The version of the audio backend (if there is one available)
     ///
@@ -15,7 +12,7 @@ pub struct StreamInfo {
     pub audio_backend_version: Option<String>,
 
     /// The name/id of the audio device.
-    pub audio_device: DeviceID,
+    pub audio_device: AudioDeviceStreamInfo,
 
     /// The audio input ports in this stream.
     ///
@@ -51,12 +48,18 @@ pub struct StreamInfo {
 }
 
 #[derive(Debug, Clone)]
+pub enum AudioDeviceStreamInfo {
+    Single(DeviceID),
+    LinkedInOut { input: Option<DeviceID>, output: Option<DeviceID> },
+}
+
+#[derive(Debug, Clone)]
 pub struct StreamAudioPortInfo {
-    /// The name of this audio port.
-    pub name: String,
+    /// The index of this audio port.
+    pub port_index: usize,
 
     /// If the system port was found and is working correctly, this will
-    /// be true. Otherwise if the system port was not found or it is not
+    /// be `true`. Otherwise if the system port was not found or it is not
     /// working correctly this will be false.
     ///
     /// Note even if this is `false`, the buffer for that port will still
@@ -85,8 +88,8 @@ impl StreamAudioBufferSize {
 /// MIDI information about a running stream.
 #[derive(Debug, Clone)]
 pub struct MidiStreamInfo {
-    /// The type of the midi backend.
-    pub midi_backend: MidiBackend,
+    /// The name of the midi backend.
+    pub midi_backend: String,
 
     /// The names & status of the MIDI input devices.
     ///

@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::AudioBackend;
 #[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
 
@@ -32,10 +31,15 @@ impl fmt::Display for StreamError {
 
 #[derive(Debug)]
 pub enum RunConfigError {
-    AudioBackendNotFound(AudioBackend),
+    AudioBackendNotFound(String),
+    AudioDeviceNotFound(String),
     AudioPortNotFound(String),
+    CouldNotUseSampleRate(u32),
+    CouldNotUseBlockSize(u32),
+
     #[cfg(feature = "midi")]
     MidiDeviceNotFound(String),
+
     PlatformSpecific(Box<dyn Error>),
 }
 impl Error for RunConfigError {}
@@ -43,10 +47,19 @@ impl fmt::Display for RunConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RunConfigError::AudioBackendNotFound(b) => {
-                write!(f, "Failed to run config: The audio backend {:?} was not found", b)
+                write!(f, "Failed to run config: The audio backend {} was not found", b)
+            }
+            RunConfigError::AudioDeviceNotFound(a) => {
+                write!(f, "Failed to run config: The audio device {} was not found", a)
             }
             RunConfigError::AudioPortNotFound(p) => {
                 write!(f, "Failed to run config: The audio port {} was not found", p)
+            }
+            RunConfigError::CouldNotUseSampleRate(s) => {
+                write!(f, "Failed to run config: Could not use the sample rate {}", s)
+            }
+            RunConfigError::CouldNotUseBlockSize(b) => {
+                write!(f, "Failed to run config: Could not use the block/buffer size {}", b)
             }
             #[cfg(feature = "midi")]
             RunConfigError::MidiDeviceNotFound(m) => {
