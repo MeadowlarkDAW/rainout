@@ -1,39 +1,16 @@
 [package]
-name = "rusty-daw-io"
+name = "rainout"
 version = "0.0.0"
-authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "midi", "device", "hardware"]
 categories = ["multimedia::audio"]
-description = "IO handling for RustyDAW projects (placeholder)"
-documentation = "https://docs.rs/rusty-daw-io"
-repository = "https://github.com/RustyDAW/rusty-daw-io"
+description = "Cross-platform audio and MIDI IO (placeholder)"
+documentation = "https://docs.rs/rainout"
+repository = "https://github.com/RustyDAW/rainout"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["midi", "jack-linux", "serde-config"]
-midi = []
-midi2 = []
-jack-linux = ["jack"]
-asio = []
-serde-config = ["serde"]
-
-[workspace]
-members = [
-]
-
 [dependencies]
-log = "0.4"
-ringbuf = "0.2"
-serde = { version = "1.0", features = ["derive"], optional = true }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-# jack = { version = "0.9", optional = true }
-jack = { git = "https://github.com/BillyDM/rust-jack.git", rev = "d632cbf998559cf14cf0dfe75077ea13f212e3c3", optional = true }
-# jack = { path = "../rust-jack", optional = true }
-
-[dev-dependencies]
-simple_logger = "2.1"
