@@ -1,4 +1,4 @@
-# rusty-daw-io
+# rainout (Rust Audio In-Out)
 
 **work in progress**
 
