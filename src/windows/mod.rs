@@ -1,7 +1,7 @@
 use crate::error::RunConfigError;
 use crate::{
-    AudioBackendOptions, AudioDeviceConfigOptions, DeviceID, ProcessHandler, RunOptions,
-    RustyDawIoConfig, StreamHandle,
+    AudioBackendOptions, AudioDeviceConfigOptions, DeviceID, ProcessHandler, RainoutConfig,
+    RunOptions, StreamHandle,
 };
 
 #[cfg(feature = "midi")]
@@ -80,7 +80,7 @@ pub fn enumerate_midi_backend(backend: &str) -> Result<MidiBackendOptions, ()> {
 ///
 /// `None` will be returned if the latency is not known at this time or if the
 /// given config is invalid.
-pub fn estimated_latency(config: &RustyDawIoConfig) -> Option<u32> {
+pub fn estimated_latency(config: &RainoutConfig) -> Option<u32> {
     todo!()
 }
 
@@ -88,7 +88,7 @@ pub fn estimated_latency(config: &RustyDawIoConfig) -> Option<u32> {
 ///
 /// `None` will be returned if the sample rate is not known at this time or if the
 /// given config is invalid.
-pub fn sample_rate(config: &RustyDawIoConfig) -> Option<u32> {
+pub fn sample_rate(config: &RainoutConfig) -> Option<u32> {
     todo!()
 }
 
@@ -102,7 +102,7 @@ pub fn sample_rate(config: &RustyDawIoConfig) -> Option<u32> {
 /// If an error is returned, then it means the config failed to run and no audio
 /// thread was spawned.
 pub fn run<P: ProcessHandler>(
-    config: &RustyDawIoConfig,
+    config: &RainoutConfig,
     options: &RunOptions,
     process_handler: P,
 ) -> Result<StreamHandle<P>, RunConfigError> {

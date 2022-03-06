@@ -1,6 +1,6 @@
 use crate::error::{ChangeAudioBufferSizeError, ChangeAudioPortConfigError, RunConfigError};
 use crate::error_behavior::ErrorBehavior;
-use crate::{platform, DeviceID, ProcessInfo, RustyDawIoConfig, StreamInfo, StreamMsgChannel};
+use crate::{platform, DeviceID, ProcessInfo, RainoutConfig, StreamInfo, StreamMsgChannel};
 
 #[cfg(feature = "midi")]
 use crate::{error::ChangeMidiDeviceConfigError, MidiDevicePortConfig};
@@ -9,7 +9,7 @@ use crate::{error::ChangeMidiDeviceConfigError, MidiDevicePortConfig};
 ///
 /// `None` will be returned if the latency is not known at this time or if the
 /// given config is invalid.
-pub fn estimated_latency(config: &RustyDawIoConfig) -> Option<u32> {
+pub fn estimated_latency(config: &RainoutConfig) -> Option<u32> {
     platform::estimated_latency(config)
 }
 
@@ -17,7 +17,7 @@ pub fn estimated_latency(config: &RustyDawIoConfig) -> Option<u32> {
 ///
 /// `None` will be returned if the sample rate is not known at this time or if the
 /// given config is invalid.
-pub fn sample_rate(config: &RustyDawIoConfig) -> Option<u32> {
+pub fn sample_rate(config: &RainoutConfig) -> Option<u32> {
     platform::sample_rate(config)
 }
 
@@ -94,7 +94,7 @@ impl Default for RunOptions {
 /// If an error is returned, then it means the config failed to run and no audio
 /// thread was spawned.
 pub fn run<P: ProcessHandler>(
-    config: &RustyDawIoConfig,
+    config: &RainoutConfig,
     options: &RunOptions,
     process_handler: P,
 ) -> Result<StreamHandle<P>, RunConfigError> {

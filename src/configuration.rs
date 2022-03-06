@@ -38,7 +38,7 @@ impl<T: Debug + Clone + PartialEq> Default for AutoOption<T> {
 #[cfg(feature = "serde-config")]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 /// The configuration of audio and MIDI backends and devices.
-pub struct RustyDawIoConfig {
+pub struct RainoutConfig {
     /// The audio backend to use.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
@@ -142,7 +142,7 @@ pub struct RustyDawIoConfig {
 #[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
 /// The configuration of audio and MIDI backends and devices.
-pub struct RustyDawIoConfig {
+pub struct RainoutConfig {
     /// The audio backend to use.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
@@ -243,9 +243,9 @@ pub struct RustyDawIoConfig {
     pub midi_config: Option<MidiConfig>,
 }
 
-impl Default for RustyDawIoConfig {
+impl Default for RainoutConfig {
     fn default() -> Self {
-        RustyDawIoConfig {
+        RainoutConfig {
             audio_backend: AutoOption::Auto,
             audio_device: AudioDeviceConfig::Auto,
             sample_rate: AutoOption::Auto,

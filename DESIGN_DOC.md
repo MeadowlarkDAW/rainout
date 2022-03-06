@@ -1,6 +1,4 @@
-# rusty-daw-io Design Document
-
-*(note "rusty-daw-io" may not be the final name of this crate)*
+# rainout Design Document
 
 # Objective
 
@@ -378,7 +376,7 @@ impl<T: Debug + Clone + PartialEq> Default for AutoOption<T> {
 #[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
 /// The configuration of audio and MIDI backends and devices.
-pub struct RustyDawIoConfig {
+pub struct RainoutConfig {
     /// The audio backend to use.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
@@ -479,9 +477,9 @@ pub struct RustyDawIoConfig {
     pub midi_config: Option<MidiConfig>,
 }
 
-impl Default for RustyDawIoConfig {
+impl Default for RainoutConfig {
     fn default() -> Self {
-        RustyDawIoConfig {
+        RainoutConfig {
             audio_backend: AutoOption::Auto,
             audio_device: AudioDeviceConfig::Auto,
             sample_rate: AutoOption::Auto,
@@ -592,13 +590,13 @@ The user sends a config to this API to run it.
 ///
 /// `None` will be returned if the latency is not known at this time or if the
 /// given config is invalid.
-pub fn estimated_latency(config: &RustyDawIoConfig) -> Option<u32> { ... }
+pub fn estimated_latency(config: &RainoutConfig) -> Option<u32> { ... }
 
 /// Get the sample rate of a particular configuration before running it.
 ///
 /// `None` will be returned if the sample rate is not known at this time or if the
 /// given config is invalid.
-pub fn sample_rate(config: &RustyDawIoConfig) -> Option<u32> { ... }
+pub fn sample_rate(config: &RainoutConfig) -> Option<u32> { ... }
 
 /// A processor for a stream.
 pub trait ProcessHandler: 'static + Send {
