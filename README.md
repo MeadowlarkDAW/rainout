@@ -1,4 +1,4 @@
-# ☔ rainout ☔ (Rust Audio In-Out)
+# ☔ rainout ☔ (Rust Audio IN-OUT)
 
 **work in progress**
 
