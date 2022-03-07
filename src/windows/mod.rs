@@ -1,3 +1,5 @@
+mod wasapi;
+
 use crate::error::RunConfigError;
 use crate::{
     AudioBackendOptions, AudioDeviceConfigOptions, DeviceID, ProcessHandler, RainoutConfig,
@@ -18,7 +20,7 @@ use crate::{error::JackEnumerationError, JackAudioDeviceOptions};
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
 pub fn available_audio_backends() -> &'static [&'static str] {
-    todo!()
+    &["wasapi"]
 }
 
 #[cfg(feature = "midi")]
@@ -27,7 +29,7 @@ pub fn available_audio_backends() -> &'static [&'static str] {
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
 pub fn available_midi_backends() -> &'static [&'static str] {
-    todo!()
+    &[]
 }
 
 /// Returns the list of available audio devices for the given backend.
@@ -35,7 +37,10 @@ pub fn available_midi_backends() -> &'static [&'static str] {
 /// This will return an error if the backend with the given name could
 /// not be found.
 pub fn enumerate_audio_backend(backend: &str) -> Result<AudioBackendOptions, ()> {
-    todo!()
+    match backend {
+        "wasapi" => wasapi::enumerate(),
+        _ => Err(()),
+    }
 }
 
 /// Returns the configuration options for the given device.
