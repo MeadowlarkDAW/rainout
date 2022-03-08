@@ -154,6 +154,23 @@ pub struct AudioBackendOptions {
     pub device_options: Option<AudioDeviceOptions>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The status of a backend
+pub enum BackendStatus {
+    /// The backend is installed and running with available devices
+    Running,
+
+    /// The backend is installed and running, but no devices were found
+    NoDevices,
+
+    /// The backend is not installed on the system and thus cannot be used
+    NotInstalled,
+
+    /// The backend is installed but it is not currently running on the system,
+    /// and thus cannot be used until it is started
+    NotRunning,
+}
+
 /// The available audio devices to select from
 pub enum AudioDeviceOptions {
     /// Only a single audio device can be selected from this list. These
