@@ -63,7 +63,7 @@ pub fn enumerate_audio_device() -> Result<JackAudioDeviceOptions, JackEnumeratio
                     break;
                 }
             }
-            let default_input_ports = if !system_audio_in_ports.is_empty() {
+            let default_in_ports = if !system_audio_in_ports.is_empty() {
                 Some((vec![default_in_port], ChannelLayout::Mono))
             } else {
                 None
@@ -85,7 +85,7 @@ pub fn enumerate_audio_device() -> Result<JackAudioDeviceOptions, JackEnumeratio
                     break;
                 }
             }
-            let default_output_ports = if !system_audio_out_ports.is_empty() {
+            let default_out_ports = if !system_audio_out_ports.is_empty() {
                 if system_audio_in_ports.len() == 1
                     || default_out_port_left == default_out_port_right
                 {
@@ -111,10 +111,10 @@ pub fn enumerate_audio_device() -> Result<JackAudioDeviceOptions, JackEnumeratio
             Ok(JackAudioDeviceOptions {
                 sample_rate,
                 block_size,
-                input_ports: system_audio_in_ports,
-                output_ports: system_audio_out_ports,
-                default_input_ports,
-                default_output_ports,
+                in_ports: system_audio_in_ports,
+                out_ports: system_audio_out_ports,
+                default_in_ports,
+                default_out_ports,
             })
         }
         Err(e) => match e {

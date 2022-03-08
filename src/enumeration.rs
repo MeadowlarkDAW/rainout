@@ -366,20 +366,20 @@ pub struct JackAudioDeviceOptions {
     pub block_size: u32,
 
     /// The names of the available input ports to select from
-    pub input_ports: Vec<String>,
+    pub in_ports: Vec<String>,
     /// The names of the available output ports to select from
-    pub output_ports: Vec<String>,
+    pub out_ports: Vec<String>,
 
     /// The indexes of the default input ports, along with their channel
     /// layout.
     ///
     /// If no default input ports could be found, then this will be `None`.
-    pub default_input_ports: Option<(Vec<usize>, ChannelLayout)>,
+    pub default_in_ports: Option<(Vec<usize>, ChannelLayout)>,
     /// The indexes of the default output ports, along with their channel
     /// layout.
     ///
     /// If no default output ports could be found, then this will be `None`.
-    pub default_output_ports: Option<(Vec<usize>, ChannelLayout)>,
+    pub default_out_ports: Option<(Vec<usize>, ChannelLayout)>,
 }
 
 #[cfg(feature = "asio")]
