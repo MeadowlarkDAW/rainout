@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::Backend;
+
 #[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
 
@@ -31,12 +33,19 @@ impl fmt::Display for StreamError {
 
 #[derive(Debug)]
 pub enum RunConfigError {
-    AudioBackendNotFound(String),
+    AudioBackendNotFound(Backend),
+    AudioBackendNotInstalled(Backend),
+    AudioBackendNotRunning(Backend),
     AudioDeviceNotFound(String),
     AudioPortNotFound(String),
     CouldNotUseSampleRate(u32),
     CouldNotUseBlockSize(u32),
+    ConfigHasNoStereoOutput,
+    AutoNoStereoOutputFound,
+    JackNotEnabledForPlatform,
 
+    #[cfg(feature = "midi")]
+    MidiBackendNotFound(Backend),
     #[cfg(feature = "midi")]
     MidiDeviceNotFound(String),
 
@@ -47,7 +56,21 @@ impl fmt::Display for RunConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RunConfigError::AudioBackendNotFound(b) => {
-                write!(f, "Failed to run config: The audio backend {} was not found", b)
+                write!(f, "Failed to run config: The audio backend {:?} was not found", b)
+            }
+            RunConfigError::AudioBackendNotInstalled(b) => {
+                write!(
+                    f,
+                    "Failed to run config: The audio backend {:?} is not installed on the system",
+                    b
+                )
+            }
+            RunConfigError::AudioBackendNotRunning(b) => {
+                write!(
+                    f,
+                    "Failed to run config: The audio backend {:?} is not running on the system",
+                    b
+                )
             }
             RunConfigError::AudioDeviceNotFound(a) => {
                 write!(f, "Failed to run config: The audio device {} was not found", a)
@@ -61,6 +84,19 @@ impl fmt::Display for RunConfigError {
             RunConfigError::CouldNotUseBlockSize(b) => {
                 write!(f, "Failed to run config: Could not use the block/buffer size {}", b)
             }
+            RunConfigError::ConfigHasNoStereoOutput => {
+                write!(f, "Failed to run config: Config must have at-least 2 audio output ports")
+            }
+            RunConfigError::AutoNoStereoOutputFound => {
+                write!(f, "Failed to run config: Could not find an audio device with at-least 2 output ports")
+            }
+            RunConfigError::JackNotEnabledForPlatform => {
+                write!(f, "Failed to run config: Jack on this platform is not enabled by this application")
+            }
+            #[cfg(feature = "midi")]
+            RunConfigError::MidiBackendNotFound(b) => {
+                write!(f, "Failed to run config: The MIDI backend {:?} was not found", b)
+            }
             #[cfg(feature = "midi")]
             RunConfigError::MidiDeviceNotFound(m) => {
                 write!(f, "Failed to run config: The midi device {} was not found", m)
@@ -73,44 +109,55 @@ impl fmt::Display for RunConfigError {
 }
 
 #[derive(Debug, Clone)]
-pub enum ChangeAudioPortConfigError {
+pub enum ChangeAudioPortsError {
     NotSupportedByBackend, // TODO: more errors?
+    JackMustUsePortNames,
+    BackendIsNotJack,
 }
-impl Error for ChangeAudioPortConfigError {}
-impl fmt::Display for ChangeAudioPortConfigError {
+impl Error for ChangeAudioPortsError {}
+impl fmt::Display for ChangeAudioPortsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChangeAudioPortConfigError::NotSupportedByBackend => {
+            ChangeAudioPortsError::NotSupportedByBackend => {
                 write!(f, "Failed to change audio port config: Not supported on this backend")
+            }
+            ChangeAudioPortsError::JackMustUsePortNames => {
+                write!(f, "Failed to change audio port config: Please us change_jack_audio_port_config() for Jack")
+            }
+            ChangeAudioPortsError::BackendIsNotJack => {
+                write!(f, "Failed to change audio port config: Please us change_audio_port_config() for non-Jack backends")
             }
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum ChangeAudioBufferSizeError {
+pub enum ChangeBlockSizeError {
     NotSupportedByBackend, // TODO: more errors?
 }
-impl Error for ChangeAudioBufferSizeError {}
-impl fmt::Display for ChangeAudioBufferSizeError {
+impl Error for ChangeBlockSizeError {}
+impl fmt::Display for ChangeBlockSizeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChangeAudioBufferSizeError::NotSupportedByBackend => {
+            ChangeBlockSizeError::NotSupportedByBackend => {
                 write!(f, "Failed to change buffer size config: Not supported on this backend")
             }
         }
     }
 }
 
+#[cfg(feature = "midi")]
 #[derive(Debug, Clone)]
-pub enum ChangeMidiDeviceConfigError {
+pub enum ChangeMidiPortsError {
     NotSupportedByBackend, // TODO: more errors?
 }
-impl Error for ChangeMidiDeviceConfigError {}
-impl fmt::Display for ChangeMidiDeviceConfigError {
+#[cfg(feature = "midi")]
+impl Error for ChangeMidiPortsError {}
+#[cfg(feature = "midi")]
+impl fmt::Display for ChangeMidiPortsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChangeMidiDeviceConfigError::NotSupportedByBackend => {
+            ChangeMidiPortsError::NotSupportedByBackend => {
                 write!(f, "Failed to change MIDI device config: Not supported on this backend")
             }
         }

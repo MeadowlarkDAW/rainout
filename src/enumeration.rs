@@ -1,11 +1,25 @@
-use crate::platform;
+use crate::Backend;
+
+#[cfg(all(target_os = "linux", feature = "jack-linux"))]
+use crate::jack_backend;
+#[cfg(all(target_os = "macos", feature = "jack-macos"))]
+use crate::jack_backend;
+#[cfg(all(target_os = "windows", feature = "jack-windows"))]
+use crate::jack_backend;
 
 /// Returns the list available audio backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
-pub fn available_audio_backends() -> &'static [&'static str] {
-    platform::available_audio_backends()
+pub fn available_audio_backends() -> &'static [Backend] {
+    &[
+        #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+        Backend::Jack,
+        #[cfg(all(target_os = "macos", feature = "jack-macos"))]
+        Backend::Jack,
+        #[cfg(all(target_os = "windows", feature = "jack-windows"))]
+        Backend::Jack,
+    ]
 }
 
 #[cfg(feature = "midi")]
@@ -13,27 +27,88 @@ pub fn available_audio_backends() -> &'static [&'static str] {
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
-pub fn available_midi_backends() -> &'static [&'static str] {
-    platform::available_midi_backends()
+pub fn available_midi_backends() -> &'static [Backend] {
+    &[
+        #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+        Backend::Jack,
+        #[cfg(all(target_os = "macos", feature = "jack-macos"))]
+        Backend::Jack,
+        #[cfg(all(target_os = "windows", feature = "jack-windows"))]
+        Backend::Jack,
+    ]
 }
 
 /// Returns the list of available audio devices for the given backend.
 ///
 /// This will return an error if the backend with the given name could
 /// not be found.
-pub fn enumerate_audio_backend(backend: &str) -> Result<AudioBackendOptions, ()> {
-    platform::enumerate_audio_backend(backend)
+pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, ()> {
+    match backend {
+        Backend::Jack => {
+            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+            return Ok(jack_backend::enumerate_audio_backend());
+            #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
+            {
+                log::error!("The feature \"jack-linux\" is not enabled");
+                return Err(());
+            }
+
+            #[cfg(all(target_os = "macos", feature = "jack-macos"))]
+            return Ok(jack_backend::enumerate_audio_backend());
+            #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
+            {
+                log::error!("The feature \"jack-macos\" is not enabled");
+                return Err(());
+            }
+
+            #[cfg(all(target_os = "windows", feature = "jack-windows"))]
+            return Ok(jack_backend::enumerate_audio_backend());
+            #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
+            {
+                log::error!("The feature \"jack-windows\" is not enabled");
+                return Err(());
+            }
+        }
+        b => {
+            log::error!("Unkown audio backend: {:?}", b);
+            Err(())
+        }
+    }
 }
 
 /// Returns the configuration options for the given device.
 ///
 /// This will return an error if the backend or the device could not
 /// be found.
+#[allow(unused_variables)]
 pub fn enumerate_audio_device(
-    backend: &str,
+    backend: Backend,
     device: &DeviceID,
 ) -> Result<AudioDeviceConfigOptions, ()> {
-    platform::enumerate_audio_device(backend, device)
+    match backend {
+        Backend::Jack => {
+            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+            log::error!("Please use enumerate_jack_audio_device() for Jack backend");
+            #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
+            log::error!("The feature \"jack-linux\" is not enabled");
+
+            #[cfg(all(target_os = "macos", feature = "jack-macos"))]
+            log::error!("Please use enumerate_jack_audio_device() for Jack backend");
+            #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
+            log::error!("The feature \"jack-macos\" is not enabled");
+
+            #[cfg(all(target_os = "windows", feature = "jack-windows"))]
+            log::error!("Please use enumerate_jack_audio_device() for Jack backend");
+            #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
+            log::error!("The feature \"jack-windows\" is not enabled");
+
+            Err(())
+        }
+        b => {
+            log::error!("Unkown audio backend: {:?}", b);
+            Err(())
+        }
+    }
 }
 
 #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -44,30 +119,27 @@ pub fn enumerate_audio_device(
 /// or if the Jack server is not running.
 pub fn enumerate_jack_audio_device(
 ) -> Result<JackAudioDeviceOptions, crate::error::JackEnumerationError> {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+    return jack_backend::enumerate_audio_device();
+    #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
     {
-        #[cfg(feature = "jack-linux")]
-        return platform::enumerate_jack_audio_device();
-
-        #[cfg(not(feature = "jack-linux"))]
+        log::error!("The feature \"jack-linux\" is not enabled");
         return Err(crate::error::JackEnumerationError::NotEnabledForPlatform);
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "jack-macos"))]
+    return jack_backend::enumerate_audio_device();
+    #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
     {
-        #[cfg(feature = "jack-macos")]
-        return platform::enumerate_jack_audio_device();
-
-        #[cfg(not(feature = "jack-macos"))]
+        log::error!("The feature \"jack-macos\" is not enabled");
         return Err(crate::error::JackEnumerationError::NotEnabledForPlatform);
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", feature = "jack-windows"))]
+    return jack_backend::enumerate_audio_device();
+    #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
     {
-        #[cfg(feature = "jack-windows")]
-        return platform::enumerate_jack_audio_device();
-
-        #[cfg(not(feature = "jack-windows"))]
+        log::error!("The feature \"jack-windows\" is not enabled");
         return Err(crate::error::JackEnumerationError::NotEnabledForPlatform);
     }
 }
@@ -78,7 +150,7 @@ pub fn enumerate_jack_audio_device(
 ///
 /// This will return an error if the device could not be found.
 pub fn enumerate_asio_audio_device(device: &DeviceID) -> Result<AsioAudioDeviceOptions, ()> {
-    platform::enumerate_asio_audio_device(device)
+    todo!()
 }
 
 #[cfg(feature = "midi")]
@@ -86,22 +158,75 @@ pub fn enumerate_asio_audio_device(device: &DeviceID) -> Result<AsioAudioDeviceO
 ///
 /// This will return an error if the backend with the given name could
 /// not be found.
-pub fn enumerate_midi_backend(backend: &str) -> Result<MidiBackendOptions, ()> {
-    platform::enumerate_midi_backend(backend)
+pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()> {
+    match backend {
+        Backend::Jack => {
+            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+            return Ok(jack_backend::enumerate_midi_backend());
+            #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
+            {
+                log::error!("The feature \"jack-linux\" is not enabled");
+                return Err(());
+            }
+
+            #[cfg(all(target_os = "macos", feature = "jack-macos"))]
+            return Ok(jack_backend::enumerate_midi_backend());
+            #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
+            {
+                log::error!("The feature \"jack-macos\" is not enabled");
+                return Err(());
+            }
+
+            #[cfg(all(target_os = "windows", feature = "jack-windows"))]
+            return Ok(jack_backend::enumerate_midi_backend());
+            #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
+            {
+                log::error!("The feature \"jack-windows\" is not enabled");
+                return Err(());
+            }
+        }
+        b => {
+            log::error!("Unkown MIDI backend: {:?}", b);
+            Err(())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The status of a backend
+pub enum BackendStatus {
+    /// The backend is installed and running with available devices
+    Running,
+
+    /// The backend is installed and running, but no devices were found
+    NoDevices,
+
+    /// The backend is not installed on the system and thus cannot be used
+    NotInstalled,
+
+    /// The backend is installed but it is not currently running on the system,
+    /// and thus cannot be used until it is started
+    NotRunning,
 }
 
 #[derive(Debug, Clone)]
 /// Information about an audio backend, including its available devices
 /// and configurations
 pub struct AudioBackendOptions {
-    /// The name of this audio backend
-    pub name: &'static str,
+    /// The audio backend
+    pub backend: Backend,
 
     /// The version of this audio backend (if that information is available)
     pub version: Option<String>,
 
-    /// The available audio devices to select from
-    pub device_options: AudioDeviceOptions,
+    /// The running status of this backend
+    pub status: BackendStatus,
+
+    /// The available audio devices to select from.
+    ///
+    /// This will be `None` if this backend's `status` is not of the type
+    /// `BackendStatus::Running`.
+    pub device_options: Option<AudioDeviceOptions>,
 }
 
 #[derive(Debug, Clone)]
@@ -237,15 +362,6 @@ pub struct BlockSizeRange {
 /// Information and configuration options for the "monolithic" system-wide
 /// Jack audio device
 pub struct JackAudioDeviceOptions {
-    /// If this is `false`, then it means that Jack is not installed on the
-    /// system and thus cannot be used.
-    pub installed_on_sytem: bool,
-
-    /// If this is `false`, then it means that Jack is installed but it is
-    /// not currently running on the system, and thus cannot be used until
-    /// the Jack server is started.
-    pub running: bool,
-
     /// The sample rate of the Jack device
     pub sample_rate: u32,
 
@@ -288,16 +404,19 @@ pub struct AsioAudioDeviceOptions {
 /// Information about a MIDI backend, including its available devices
 /// and configurations
 pub struct MidiBackendOptions {
-    /// The name of this MIDI backend
-    pub name: &'static str,
+    /// The MIDI backend
+    pub backend: Backend,
 
     /// The version of this MIDI backend (if that information is available)
     pub version: Option<String>,
 
+    /// The running status of this backend
+    pub status: BackendStatus,
+
     /// The names of the available input MIDI devices to select from
-    pub in_device_ports: Vec<MidiDevicePortOptions>,
+    pub in_device_ports: Vec<MidiPortOptions>,
     /// The names of the available output MIDI devices to select from
-    pub out_device_ports: Vec<MidiDevicePortOptions>,
+    pub out_device_ports: Vec<MidiPortOptions>,
 
     /// The index of the default/preferred input MIDI port for the backend
     ///
@@ -314,7 +433,7 @@ pub struct MidiBackendOptions {
 #[cfg(feature = "midi")]
 #[derive(Debug, Clone)]
 /// Information and configuration options for a MIDI device port
-pub struct MidiDevicePortOptions {
+pub struct MidiPortOptions {
     /// The name/ID of this device
     pub id: DeviceID,
 

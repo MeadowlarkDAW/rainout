@@ -5,7 +5,7 @@
 
 **work in progress**
 
-A cross-platform, highly configurable, low-latency, and robust solution for connecting audio software to audio and MIDI devices.
+A cross-platform, highly configurable, low-latency, and robust solution for connecting to audio and MIDI devices.
 
 Take a look at the current [Design Document].
 

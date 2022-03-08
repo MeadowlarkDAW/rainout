@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::DeviceID;
+use crate::{Backend, DeviceID};
 
 #[cfg(feature = "midi")]
 use crate::MidiControlScheme;
@@ -43,7 +43,7 @@ pub struct RainoutConfig {
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// backend to use.
-    pub audio_backend: AutoOption<String>,
+    pub audio_backend: AutoOption<Backend>,
 
     /// The audio device/devices to use.
     ///
@@ -147,7 +147,7 @@ pub struct RainoutConfig {
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// backend to use.
-    pub audio_backend: AutoOption<String>,
+    pub audio_backend: AutoOption<Backend>,
 
     /// The audio device/devices to use.
     ///
@@ -317,7 +317,7 @@ pub struct MidiConfig {
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// backend to use.
-    pub midi_backend: AutoOption<String>,
+    pub midi_backend: AutoOption<Backend>,
 
     /// The names of the MIDI input ports to use.
     ///
@@ -328,7 +328,7 @@ pub struct MidiConfig {
     /// configuration of input ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI inputs.
-    pub in_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
+    pub in_device_ports: AutoOption<Vec<MidiPortConfig>>,
 
     /// The names of the MIDI output ports to use.
     ///
@@ -339,7 +339,7 @@ pub struct MidiConfig {
     /// configuration of output ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI outputs.
-    pub out_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
+    pub out_device_ports: AutoOption<Vec<MidiPortConfig>>,
 }
 
 #[cfg(feature = "midi")]
@@ -351,7 +351,7 @@ pub struct MidiConfig {
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// backend to use.
-    pub midi_backend: AutoOption<String>,
+    pub midi_backend: AutoOption<Backend>,
 
     /// The names of the MIDI input ports to use.
     ///
@@ -362,7 +362,7 @@ pub struct MidiConfig {
     /// configuration of input ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI inputs.
-    pub in_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
+    pub in_device_ports: AutoOption<Vec<MidiPortConfig>>,
 
     /// The names of the MIDI output ports to use.
     ///
@@ -373,7 +373,7 @@ pub struct MidiConfig {
     /// configuration of output ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI outputs.
-    pub out_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
+    pub out_device_ports: AutoOption<Vec<MidiPortConfig>>,
 }
 
 impl Default for MidiConfig {
@@ -390,7 +390,7 @@ impl Default for MidiConfig {
 #[cfg(feature = "serde-config")]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 /// The configuration of a MIDI device port
-pub struct MidiDevicePortConfig {
+pub struct MidiPortConfig {
     /// The name/ID of the MIDI device to use
     pub device_id: DeviceID,
 
@@ -405,7 +405,7 @@ pub struct MidiDevicePortConfig {
 #[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
 /// The configuration of a MIDI device port
-pub struct MidiDevicePortConfig {
+pub struct MidiPortConfig {
     /// The name/ID of the MIDI device to use
     pub device_id: DeviceID,
 
