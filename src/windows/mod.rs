@@ -89,7 +89,7 @@ pub fn enumerate_midi_backend(backend: &str) -> Result<MidiBackendOptions, ()> {
 /// `None` will be returned if the latency is not known at this time or if the
 /// given config is invalid.
 pub fn estimated_latency(config: &RainoutConfig) -> Option<u32> {
-    match config.audio_backend {
+    match &config.audio_backend {
         crate::AutoOption::Use(backend) => match backend.as_str() {
             // TODO: We probably can either predict or partially control this in WASAPI
             "wasapi" => None,
@@ -104,7 +104,7 @@ pub fn estimated_latency(config: &RainoutConfig) -> Option<u32> {
 /// `None` will be returned if the sample rate is not known at this time or if the
 /// given config is invalid.
 pub fn sample_rate(config: &RainoutConfig) -> Option<u32> {
-    match config.audio_backend {
+    match &config.audio_backend {
         crate::AutoOption::Use(backend) => match backend.as_str() {
             // TODO: Support other sample rates in WASAPI
             "wasapi" => Some(44100),
@@ -128,11 +128,11 @@ pub fn run<P: ProcessHandler>(
     options: &RunOptions,
     process_handler: P,
 ) -> Result<StreamHandle<P>, RunConfigError> {
-    match config.audio_backend {
+    match &config.audio_backend {
         crate::AutoOption::Use(backend) => match backend.as_str() {
             // TODO: Support other sample rates in WASAPI
             "wasapi" => wasapi::run(config, options, process_handler),
-            _ => Err(RunConfigError::AudioBackendNotFound(backend)),
+            _ => Err(RunConfigError::AudioBackendNotFound(backend.to_string())),
         },
         crate::AutoOption::Auto => todo!(),
     }
