@@ -1,8 +1,8 @@
 use ringbuf::Producer;
 
-use crate::error::{ChangeAudioPortsError, ChangeBlockSizeError, RunConfigError};
+use crate::error::{ChangeAudioChannelsError, ChangeBlockSizeError, RunConfigError};
 use crate::{
-    AudioBufferStreamInfo, AudioDeviceStreamInfo, AudioPortStreamInfo, AutoOption, Backend,
+    AudioBufferStreamInfo, AudioChannelStreamInfo, AudioDeviceStreamInfo, AutoOption, Backend,
     DeviceID, PlatformStreamHandle, ProcessHandler, RainoutConfig, RunOptions, StreamHandle,
     StreamInfo, StreamMsg,
 };
@@ -64,7 +64,7 @@ pub fn run<P: ProcessHandler>(
 
     // --- Register client audio ports --------------------------------------------------------------
 
-    let use_audio_in_ports = match &config.jack_input_ports {
+    let use_audio_in_ports = match &config.jack_in_ports {
         AutoOption::Use(ports) => ports.clone(),
         AutoOption::Auto => {
             let mut use_ports: Vec<String> = Vec::new();
@@ -88,7 +88,7 @@ pub fn run<P: ProcessHandler>(
         }
     };
 
-    let use_audio_out_ports = match &config.jack_output_ports {
+    let use_audio_out_ports = match &config.jack_out_ports {
         AutoOption::Use(ports) => {
             if options.must_have_stereo_output && ports.len() < 2 {
                 return Err(RunConfigError::ConfigHasNoStereoOutput);
@@ -140,16 +140,16 @@ pub fn run<P: ProcessHandler>(
     let mut client_audio_in_port_names = Vec::<String>::with_capacity(use_audio_in_ports.len());
     let mut client_audio_in_connected_to =
         Vec::<Option<String>>::with_capacity(use_audio_in_ports.len());
-    let mut audio_in_port_info =
-        Vec::<AudioPortStreamInfo>::with_capacity(use_audio_in_ports.len());
+    let mut audio_in_channel_info =
+        Vec::<AudioChannelStreamInfo>::with_capacity(use_audio_in_ports.len());
 
     let mut client_audio_out_ports =
         Vec::<jack::Port<jack::AudioOut>>::with_capacity(use_audio_out_ports.len());
     let mut client_audio_out_port_names = Vec::<String>::with_capacity(use_audio_out_ports.len());
     let mut client_audio_out_connected_to =
         Vec::<Option<String>>::with_capacity(use_audio_out_ports.len());
-    let mut audio_out_port_info =
-        Vec::<AudioPortStreamInfo>::with_capacity(use_audio_out_ports.len());
+    let mut audio_out_channel_info =
+        Vec::<AudioChannelStreamInfo>::with_capacity(use_audio_out_ports.len());
 
     for (i, port) in use_audio_in_ports.iter().enumerate() {
         if !system_audio_in_ports.contains(port) {
@@ -157,14 +157,14 @@ pub fn run<P: ProcessHandler>(
                 return Err(RunConfigError::AudioPortNotFound(port.clone()));
             }
             client_audio_in_connected_to.push(None);
-            audio_in_port_info.push(AudioPortStreamInfo {
+            audio_in_channel_info.push(AudioChannelStreamInfo {
                 connected_to_index: 0,
                 connected_to_name: None,
                 connected_to_system: false,
             });
         } else {
             client_audio_in_connected_to.push(Some(port.clone()));
-            audio_in_port_info.push(AudioPortStreamInfo {
+            audio_in_channel_info.push(AudioChannelStreamInfo {
                 connected_to_index: 0,
                 connected_to_name: Some(port.clone()),
                 connected_to_system: true,
@@ -184,14 +184,14 @@ pub fn run<P: ProcessHandler>(
                 return Err(RunConfigError::AudioPortNotFound(port.clone()));
             }
             client_audio_out_connected_to.push(None);
-            audio_out_port_info.push(AudioPortStreamInfo {
+            audio_out_channel_info.push(AudioChannelStreamInfo {
                 connected_to_index: 0,
                 connected_to_name: None,
                 connected_to_system: false,
             });
         } else {
             client_audio_out_connected_to.push(Some(port.clone()));
-            audio_out_port_info.push(AudioPortStreamInfo {
+            audio_out_channel_info.push(AudioChannelStreamInfo {
                 connected_to_index: 0,
                 connected_to_name: Some(port.clone()),
                 connected_to_system: true,
@@ -413,8 +413,8 @@ pub fn run<P: ProcessHandler>(
     let midi_info = if let Some(midi_ports) = &midi_port_info {
         Some(MidiStreamInfo {
             midi_backend: Backend::Jack,
-            in_device_ports: midi_ports.midi_in_port_info.clone(),
-            out_device_ports: midi_ports.midi_out_port_info.clone(),
+            in_ports: midi_ports.midi_in_port_info.clone(),
+            out_ports: midi_ports.midi_out_port_info.clone(),
             midi_buffer_size: options.midi_buffer_size as usize,
         })
     } else {
@@ -428,8 +428,8 @@ pub fn run<P: ProcessHandler>(
             name: JACK_DEVICE_NAME.to_string(),
             identifier: None,
         }),
-        audio_in_ports: audio_in_port_info,
-        audio_out_ports: audio_out_port_info,
+        audio_in_channels: audio_in_channel_info,
+        audio_out_channels: audio_out_channel_info,
         sample_rate,
         buffer_size: AudioBufferStreamInfo::FixedSized(client.buffer_size() as u32),
         estimated_latency: None,
@@ -576,28 +576,28 @@ impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle {
         &self.stream_info
     }
 
-    fn change_audio_port_config(
+    fn change_audio_channels(
         &mut self,
         _audio_in_ports: Vec<usize>,
         _audio_out_ports: Vec<usize>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        Err(ChangeAudioPortsError::JackMustUsePortNames)
+    ) -> Result<(), ChangeAudioChannelsError> {
+        Err(ChangeAudioChannelsError::JackMustUsePortNames)
     }
 
-    fn change_jack_audio_port_config(
+    fn change_jack_audio_ports(
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioPortsError> {
+    ) -> Result<(), ChangeAudioChannelsError> {
         todo!()
     }
 
-    fn change_block_size_config(&mut self, _block_size: u32) -> Result<(), ChangeBlockSizeError> {
+    fn change_block_size(&mut self, _block_size: u32) -> Result<(), ChangeBlockSizeError> {
         Err(ChangeBlockSizeError::NotSupportedByBackend)
     }
 
     #[cfg(feature = "midi")]
-    fn change_midi_device_config(
+    fn change_midi_ports(
         &mut self,
         in_devices: Vec<MidiPortConfig>,
         out_devices: Vec<MidiPortConfig>,
@@ -605,7 +605,7 @@ impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle {
         todo!()
     }
 
-    fn can_change_audio_ports(&self) -> bool {
+    fn can_change_audio_channels(&self) -> bool {
         true
     }
 

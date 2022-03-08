@@ -1,4 +1,4 @@
-use crate::error::{ChangeAudioPortsError, ChangeBlockSizeError, RunConfigError};
+use crate::error::{ChangeAudioChannelsError, ChangeBlockSizeError, RunConfigError};
 use crate::{AutoOption, Backend, ProcessInfo, RainoutConfig, StreamInfo, StreamMsg};
 use ringbuf::Consumer;
 
@@ -82,7 +82,7 @@ pub struct RunOptions {
     pub use_application_name: Option<String>,
 
     /// If this is `true`, then the system will try to automatically connect to
-    /// the default audio input port/ports when using `AutoOption::Auto`.
+    /// the default audio input channels when using `AutoOption::Auto`.
     ///
     /// If you only want audio outputs, then set this to `false`.
     ///
@@ -105,14 +105,14 @@ pub struct RunOptions {
     pub check_for_silent_inputs: bool,
 
     /// If `true`, then the system will return an error if it was not able to
-    /// connect to a device with at-least two output ports. It will also try
+    /// connect to a device with at-least two output channels. It will also try
     /// to avoid automatically connecting to devices with mono outputs.
     ///
     /// By default this is set to `true`.
     pub must_have_stereo_output: bool,
 
     /// If `true`, then the system will use empty (silent) buffers for any
-    /// audio/MIDI ports that failed to connect instead of returning an
+    /// audio/MIDI channels/ports that failed to connect instead of returning an
     /// error.
     ///
     /// By default this is set to `false`.
@@ -244,12 +244,12 @@ impl<P: ProcessHandler> StreamHandle<P> {
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_audio_port_config(
+    pub fn change_audio_channels(
         &mut self,
-        in_port_indexes: Vec<usize>,
-        out_port_indexes: Vec<usize>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        self.platform_handle.change_audio_port_config(in_port_indexes, out_port_indexes)
+        in_channels: Vec<usize>,
+        out_channels: Vec<usize>,
+    ) -> Result<(), ChangeAudioChannelsError> {
+        self.platform_handle.change_audio_channels(in_channels, out_channels)
     }
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -257,12 +257,12 @@ impl<P: ProcessHandler> StreamHandle<P> {
     /// audio thread is still running.
     ///
     /// This will return an error if the current backend is not Jack.
-    pub fn change_jack_audio_port_config(
+    pub fn change_jack_audio_ports(
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        self.platform_handle.change_jack_audio_port_config(in_port_names, out_port_names)
+    ) -> Result<(), ChangeAudioChannelsError> {
+        self.platform_handle.change_jack_audio_ports(in_port_names, out_port_names)
     }
 
     /// Change the buffer/block size configuration while the audio thread is still
@@ -270,11 +270,8 @@ impl<P: ProcessHandler> StreamHandle<P> {
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_block_size_config(
-        &mut self,
-        buffer_size: u32,
-    ) -> Result<(), ChangeBlockSizeError> {
-        self.platform_handle.change_block_size_config(buffer_size)
+    pub fn change_block_size(&mut self, buffer_size: u32) -> Result<(), ChangeBlockSizeError> {
+        self.platform_handle.change_block_size(buffer_size)
     }
 
     #[cfg(feature = "midi")]
@@ -283,21 +280,21 @@ impl<P: ProcessHandler> StreamHandle<P> {
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_midi_device_config(
+    pub fn change_midi_ports(
         &mut self,
         in_devices: Vec<MidiPortConfig>,
         out_devices: Vec<MidiPortConfig>,
     ) -> Result<(), ChangeMidiPortsError> {
-        self.platform_handle.change_midi_device_config(in_devices, out_devices)
+        self.platform_handle.change_midi_ports(in_devices, out_devices)
     }
 
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
-    /// Returns whether or not this backend supports changing the audio bus
+    /// Returns whether or not this backend supports changing the audio channel
     /// configuration while the audio thread is running.
-    pub fn can_change_audio_ports(&self) -> bool {
-        self.platform_handle.can_change_audio_ports()
+    pub fn can_change_audio_channels(&self) -> bool {
+        self.platform_handle.can_change_audio_channels()
     }
 
     // Returns whether or not this backend supports changing the buffer size
@@ -326,14 +323,14 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     /// effect on the running audio thread.
     ///
     /// This will return an error if the current backend is Jack. Please use
-    /// `change_jack_audio_port_config()` instead for Jack.
+    /// `change_jack_audio_ports()` instead for Jack.
     #[allow(unused_variables)]
-    fn change_audio_port_config(
+    fn change_audio_channels(
         &mut self,
-        in_port_indexes: Vec<usize>,
-        out_port_indexes: Vec<usize>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        Err(ChangeAudioPortsError::NotSupportedByBackend)
+        in_channels: Vec<usize>,
+        out_channels: Vec<usize>,
+    ) -> Result<(), ChangeAudioChannelsError> {
+        Err(ChangeAudioChannelsError::NotSupportedByBackend)
     }
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -342,12 +339,12 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     ///
     /// This will return an error if the current backend is not Jack.
     #[allow(unused_variables)]
-    fn change_jack_audio_port_config(
+    fn change_jack_audio_ports(
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        Err(ChangeAudioPortsError::BackendIsNotJack)
+    ) -> Result<(), ChangeAudioChannelsError> {
+        Err(ChangeAudioChannelsError::BackendIsNotJack)
     }
 
     /// Change the buffer/block size configuration while the audio thread is still
@@ -356,7 +353,7 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
     #[allow(unused_variables)]
-    fn change_block_size_config(&mut self, buffer_size: u32) -> Result<(), ChangeBlockSizeError> {
+    fn change_block_size(&mut self, buffer_size: u32) -> Result<(), ChangeBlockSizeError> {
         Err(ChangeBlockSizeError::NotSupportedByBackend)
     }
 
@@ -367,7 +364,7 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
     #[allow(unused_variables)]
-    fn change_midi_device_config(
+    fn change_midi_ports(
         &mut self,
         in_devices: Vec<MidiPortConfig>,
         out_devices: Vec<MidiPortConfig>,
@@ -378,9 +375,9 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
-    /// Returns whether or not this backend supports changing the audio bus
+    /// Returns whether or not this backend supports changing the audio channel
     /// configuration while the audio thread is running.
-    fn can_change_audio_ports(&self) -> bool {
+    fn can_change_audio_channels(&self) -> bool {
         false
     }
 

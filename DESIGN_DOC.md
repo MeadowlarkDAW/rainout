@@ -183,12 +183,9 @@ pub enum AudioDeviceOptions {
     /// A single input and output device pair can be selected from this list.
     LinkedInOutDevice {
         /// The names/IDs of the available input devices to select from
-        input_devices: Vec<DeviceID>,
+        in_devices: Vec<DeviceID>,
         /// The names/IDs of the available output devices to select from
-        output_devices: Vec<DeviceID>,
-
-        /// The available configurations for this device pair
-        config_options: AudioDeviceConfigOptions,
+        out_devices: Vec<DeviceID>,
     },
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -218,15 +215,15 @@ pub struct AudioDeviceConfigOptions {
     /// will be `None`.
     pub block_sizes: Option<BlockSizeRange>,
 
-    /// The number of input audio ports available
-    pub num_input_ports: usize,
-    /// The number of output audio ports available
-    pub num_output_ports: usize,
+    /// The number of input audio channels available
+    pub num_in_channels: usize,
+    /// The number of output audio channels available
+    pub num_out_channels: usize,
 
-    /// The layout of the input audio ports
-    pub input_channel_layout: ChannelLayout,
-    /// The layout of the output audio ports
-    pub output_channel_layout: ChannelLayout,
+    /// The layout of the input audio channels
+    pub in_channel_layout: ChannelLayout,
+    /// The layout of the output audio channels
+    pub out_channel_layout: ChannelLayout,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.
@@ -407,38 +404,38 @@ pub struct RainoutConfig {
     /// buffer/block size to use.
     pub block_size: AutoOption<u32>,
 
-    /// The indexes of the audio input ports to use.
+    /// The indexes of the audio input channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of input ports to use.
+    /// configuration of input channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub input_channels: AutoOption<Vec<usize>>,
+    pub in_channels: AutoOption<Vec<usize>>,
 
-    /// The indexes of the audio output ports to use.
+    /// The indexes of the audio output channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of output ports to use.
+    /// configuration of output channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub output_channels: AutoOption<Vec<usize>>,
+    pub out_channels: AutoOption<Vec<usize>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio input ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -449,14 +446,14 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_input_ports: AutoOption<Vec<String>>,
+    pub jack_in_ports: AutoOption<Vec<String>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio output ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -467,7 +464,7 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_output_ports: AutoOption<Vec<String>>,
+    pub jack_out_ports: AutoOption<Vec<String>>,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.
@@ -511,7 +508,7 @@ pub struct MidiConfig {
     /// The names of the MIDI input ports to use.
     ///
     /// The buffers presented in `ProcInfo::midi_in` will appear in this
-    /// exact same order.
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of input ports to use.
@@ -522,7 +519,7 @@ pub struct MidiConfig {
     /// The names of the MIDI output ports to use.
     ///
     /// The buffers presented in `ProcInfo::midi_out` will appear in this
-    /// exact same order.
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of output ports to use.
@@ -588,7 +585,7 @@ pub struct RunOptions {
     pub use_application_name: Option<String>,
 
     /// If this is `true`, then the system will try to automatically connect to
-    /// the default audio input port/ports when using `AutoOption::Auto`.
+    /// the default audio input channels when using `AutoOption::Auto`.
     ///
     /// If you only want audio outputs, then set this to `false`.
     ///
@@ -611,14 +608,14 @@ pub struct RunOptions {
     pub check_for_silent_inputs: bool,
 
     /// If `true`, then the system will return an error if it was not able to
-    /// connect to a device with at-least two output ports. It will also try
+    /// connect to a device with at-least two output channels. It will also try
     /// to avoid automatically connecting to devices with mono outputs.
     ///
     /// By default this is set to `true`.
     pub must_have_stereo_output: bool,
 
     /// If `true`, then the system will use empty (silent) buffers for any
-    /// audio/MIDI ports that failed to connect instead of returning an
+    /// audio/MIDI channels/ports that failed to connect instead of returning an
     /// error.
     ///
     /// By default this is set to `false`.
@@ -659,47 +656,39 @@ pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
 impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
-    pub fn stream_info(&self) -> &StreamInfo {
-        self.platform_handle.stream_info()
-    }
+    pub fn stream_info(&self) -> &StreamInfo { ... }
 
     /// Change the audio port configuration while the audio thread is still running.
     /// Support for this will depend on the backend.
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_audio_port_config(
+    pub fn change_audio_channels(
         &mut self,
-        in_port_indexes: Vec<usize>,
-        out_port_indexes: Vec<usize>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        self.platform_handle.change_audio_port_config(in_port_indexes, out_port_indexes)
-    }
+        in_channels: Vec<usize>,
+        out_channels: Vec<usize>,
+    ) -> Result<(), ChangeAudioChannelsError> { ... }
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// Change the audio port configuration (when using the Jack backend) while the
     /// audio thread is still running.
     ///
     /// This will return an error if the current backend is not Jack.
-    pub fn change_jack_audio_port_config(
+    pub fn change_jack_audio_ports(
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioPortsError> {
-        self.platform_handle.change_jack_audio_port_config(in_port_names, out_port_names)
-    }
+    ) -> Result<(), ChangeAudioChannelsError> { ... }
 
     /// Change the buffer/block size configuration while the audio thread is still
     /// running. Support for this will depend on the backend.
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_block_size_config(
+    pub fn change_block_size(
         &mut self,
         buffer_size: u32,
-    ) -> Result<(), ChangeBlockSizeError> {
-        self.platform_handle.change_block_size_config(buffer_size)
-    }
+    ) -> Result<(), ChangeBlockSizeError> { ... }
 
     #[cfg(feature = "midi")]
     /// Change the midi device configuration while the audio thread is still running.
@@ -707,35 +696,27 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_midi_device_config(
+    pub fn change_midi_ports(
         &mut self,
         in_devices: Vec<MidiPortConfig>,
         out_devices: Vec<MidiPortConfig>,
-    ) -> Result<(), ChangeMidiPortsError> {
-        self.platform_handle.change_midi_device_config(in_devices, out_devices)
-    }
+    ) -> Result<(), ChangeMidiPortsError> { ... }
 
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
-    /// Returns whether or not this backend supports changing the audio bus
+    /// Returns whether or not this backend supports changing the audio channel
     /// configuration while the audio thread is running.
-    pub fn can_change_audio_ports(&self) -> bool {
-        self.platform_handle.can_change_audio_port_config()
-    }
+    pub fn can_change_audio_channels(&self) -> bool { ... }
 
     // Returns whether or not this backend supports changing the buffer size
     // configuration while the audio thread is running.
-    pub fn can_change_block_size(&self) -> bool {
-        self.platform_handle.can_change_audio_buffer_size_config()
-    }
+    pub fn can_change_block_size(&self) -> bool { ... }
 
     #[cfg(feature = "midi")]
     /// Returns whether or not this backend supports changing the midi device
     /// config while the audio thread is running.
-    pub fn can_change_midi_ports(&self) -> bool {
-        self.platform_handle.can_change_midi_device_config()
-    }
+    pub fn can_change_midi_ports(&self) -> bool { ... }
 }
 
 // TODO: Implementations of `RunConfigErrorRunConfigError`, `ChangeAudioPortConfigError`,

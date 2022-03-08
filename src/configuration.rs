@@ -63,38 +63,38 @@ pub struct RainoutConfig {
     /// buffer/block size to use.
     pub block_size: AutoOption<u32>,
 
-    /// The indexes of the audio input ports to use.
+    /// The indexes of the audio input channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of input ports to use.
+    /// configuration of input channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub input_channels: AutoOption<Vec<usize>>,
+    pub in_channels: AutoOption<Vec<usize>>,
 
-    /// The indexes of the audio output ports to use.
+    /// The indexes of the audio output channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of output ports to use.
+    /// configuration of output channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub output_channels: AutoOption<Vec<usize>>,
+    pub out_channels: AutoOption<Vec<usize>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio input ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -105,14 +105,14 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_input_ports: AutoOption<Vec<String>>,
+    pub jack_in_ports: AutoOption<Vec<String>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio output ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -123,7 +123,7 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_output_ports: AutoOption<Vec<String>>,
+    pub jack_out_ports: AutoOption<Vec<String>>,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.
@@ -167,38 +167,38 @@ pub struct RainoutConfig {
     /// buffer/block size to use.
     pub block_size: AutoOption<u32>,
 
-    /// The indexes of the audio input ports to use.
+    /// The indexes of the audio input channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of input ports to use.
+    /// configuration of input channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub input_channels: AutoOption<Vec<usize>>,
+    pub in_channels: AutoOption<Vec<usize>>,
 
-    /// The indexes of the audio output ports to use.
+    /// The indexes of the audio output channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of output ports to use.
+    /// configuration of output channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub output_channels: AutoOption<Vec<usize>>,
+    pub out_channels: AutoOption<Vec<usize>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio input ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -209,14 +209,14 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_input_ports: AutoOption<Vec<String>>,
+    pub jack_in_ports: AutoOption<Vec<String>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio output ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -227,7 +227,7 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_output_ports: AutoOption<Vec<String>>,
+    pub jack_out_ports: AutoOption<Vec<String>>,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.
@@ -250,13 +250,13 @@ impl Default for RainoutConfig {
             audio_device: AudioDeviceConfig::Auto,
             sample_rate: AutoOption::Auto,
             block_size: AutoOption::Auto,
-            input_channels: AutoOption::Use(Vec::new()),
-            output_channels: AutoOption::Auto,
+            in_channels: AutoOption::Use(Vec::new()),
+            out_channels: AutoOption::Auto,
 
             #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-            jack_input_ports: AutoOption::Use(Vec::new()),
+            jack_in_ports: AutoOption::Use(Vec::new()),
             #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-            jack_output_ports: AutoOption::Auto,
+            jack_out_ports: AutoOption::Auto,
 
             take_exclusive_access: false,
 
@@ -321,8 +321,8 @@ pub struct MidiConfig {
 
     /// The names of the MIDI input ports to use.
     ///
-    /// The buffers presented in `ProcInfo::midi_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::midi_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of input ports to use.
@@ -332,8 +332,8 @@ pub struct MidiConfig {
 
     /// The names of the MIDI output ports to use.
     ///
-    /// The buffers presented in `ProcInfo::midi_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::midi_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of output ports to use.
@@ -355,8 +355,8 @@ pub struct MidiConfig {
 
     /// The names of the MIDI input ports to use.
     ///
-    /// The buffers presented in `ProcInfo::midi_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::midi_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of input ports to use.
@@ -366,8 +366,8 @@ pub struct MidiConfig {
 
     /// The names of the MIDI output ports to use.
     ///
-    /// The buffers presented in `ProcInfo::midi_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::midi_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of output ports to use.

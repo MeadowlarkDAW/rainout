@@ -243,12 +243,9 @@ pub enum AudioDeviceOptions {
     /// A single input and output device pair can be selected from this list.
     LinkedInOutDevice {
         /// The names/IDs of the available input devices to select from
-        input_devices: Vec<DeviceID>,
+        in_devices: Vec<DeviceID>,
         /// The names/IDs of the available output devices to select from
-        output_devices: Vec<DeviceID>,
-
-        /// The available configurations for this device pair
-        config_options: AudioDeviceConfigOptions,
+        out_devices: Vec<DeviceID>,
     },
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -303,15 +300,15 @@ pub struct AudioDeviceConfigOptions {
     /// will be `None`.
     pub block_sizes: Option<BlockSizeRange>,
 
-    /// The number of input audio ports available
-    pub num_input_ports: usize,
-    /// The number of output audio ports available
-    pub num_output_ports: usize,
+    /// The number of input audio channels available
+    pub num_in_channels: usize,
+    /// The number of output audio channels available
+    pub num_out_channels: usize,
 
-    /// The layout of the input audio ports
-    pub input_channel_layout: ChannelLayout,
-    /// The layout of the output audio ports
-    pub output_channel_layout: ChannelLayout,
+    /// The layout of the input audio channels
+    pub in_channel_layout: ChannelLayout,
+    /// The layout of the output audio channels
+    pub out_channel_layout: ChannelLayout,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.

@@ -17,17 +17,17 @@ pub struct StreamInfo {
     /// The name/id of the audio device.
     pub audio_device: AudioDeviceStreamInfo,
 
-    /// The audio input ports in this stream.
+    /// The audio input channels in this stream.
     ///
     /// The buffers presented in the `ProcessInfo::audio_inputs` will
     /// appear in this exact same order.
-    pub audio_in_ports: Vec<AudioPortStreamInfo>,
+    pub audio_in_channels: Vec<AudioChannelStreamInfo>,
 
-    /// The audio output ports in this stream.
+    /// The audio output channels in this stream.
     ///
     /// The buffers presented in the `ProcessInfo::audio_outputs` will
     /// appear in this exact same order.
-    pub audio_out_ports: Vec<AudioPortStreamInfo>,
+    pub audio_out_channels: Vec<AudioChannelStreamInfo>,
 
     /// The sample rate of the stream.
     pub sample_rate: u32,
@@ -57,8 +57,8 @@ pub enum AudioDeviceStreamInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct AudioPortStreamInfo {
-    /// The index of the device's port this port is connected to.
+pub struct AudioChannelStreamInfo {
+    /// The index of the device's channels this channel is connected to.
     ///
     /// This is not relevant when the backend is Jack.
     pub connected_to_index: usize,
@@ -68,11 +68,11 @@ pub struct AudioPortStreamInfo {
     /// This is only relevant when the backend is Jack.
     pub connected_to_name: Option<String>,
 
-    /// If the system port was found and is working correctly, this will
-    /// be `true`. Otherwise if the system port was not found or it is not
+    /// If the system channel was found and is working correctly, this will
+    /// be `true`. Otherwise if the system channel was not found or it is not
     /// working correctly this will be false.
     ///
-    /// Note even if this is `false`, the buffer for that port will still
+    /// Note even if this is `false`, the buffer for that channel will still
     /// be passed to `ProcessInfo`. It will just be filled with silence
     /// instead and not do anything.
     pub connected_to_system: bool,
@@ -105,13 +105,13 @@ pub struct MidiStreamInfo {
     ///
     /// The buffers presented in the `ProcessInfo::midi_inputs` will
     /// appear in this exact same order.
-    pub in_device_ports: Vec<MidiPortStreamInfo>,
+    pub in_ports: Vec<MidiPortStreamInfo>,
 
     /// The names & status of the MIDI output devices.
     ///
     /// The buffers presented in the `ProcessInfo::midi_outputs` will
     /// appear in this exact same order.
-    pub out_device_ports: Vec<MidiPortStreamInfo>,
+    pub out_ports: Vec<MidiPortStreamInfo>,
 
     /// The allocated size for each MIDI buffer.
     pub midi_buffer_size: usize,

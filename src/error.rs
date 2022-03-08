@@ -109,22 +109,22 @@ impl fmt::Display for RunConfigError {
 }
 
 #[derive(Debug, Clone)]
-pub enum ChangeAudioPortsError {
+pub enum ChangeAudioChannelsError {
     NotSupportedByBackend, // TODO: more errors?
     JackMustUsePortNames,
     BackendIsNotJack,
 }
-impl Error for ChangeAudioPortsError {}
-impl fmt::Display for ChangeAudioPortsError {
+impl Error for ChangeAudioChannelsError {}
+impl fmt::Display for ChangeAudioChannelsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChangeAudioPortsError::NotSupportedByBackend => {
+            ChangeAudioChannelsError::NotSupportedByBackend => {
                 write!(f, "Failed to change audio port config: Not supported on this backend")
             }
-            ChangeAudioPortsError::JackMustUsePortNames => {
+            ChangeAudioChannelsError::JackMustUsePortNames => {
                 write!(f, "Failed to change audio port config: Please us change_jack_audio_port_config() for Jack")
             }
-            ChangeAudioPortsError::BackendIsNotJack => {
+            ChangeAudioChannelsError::BackendIsNotJack => {
                 write!(f, "Failed to change audio port config: Please us change_audio_port_config() for non-Jack backends")
             }
         }
