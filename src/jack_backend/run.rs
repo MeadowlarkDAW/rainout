@@ -4,7 +4,7 @@ use crate::error::{ChangeAudioPortsError, ChangeBlockSizeError, RunConfigError};
 use crate::{
     AudioBufferStreamInfo, AudioDeviceStreamInfo, AudioPortStreamInfo, AutoOption, Backend,
     DeviceID, PlatformStreamHandle, ProcessHandler, RainoutConfig, RunOptions, StreamHandle,
-    StreamInfo, StreamMsg, StreamMsgChannel,
+    StreamInfo, StreamMsg,
 };
 
 #[cfg(feature = "midi")]
@@ -454,13 +454,14 @@ pub fn run<P: ProcessHandler>(
 
     // --- Spawn Jack stream -----------------------------------------------------------------------
 
-    let (msg_channel, to_msg_channel_tx) = StreamMsgChannel::new(options.msg_buffer_size);
+    let (to_stream_handle_tx, from_audio_thread_rx) =
+        ringbuf::RingBuffer::new(options.msg_buffer_size).split();
 
     log::debug!("Activating Jack client...");
 
     // Activate the client, which starts the processing.
     let async_client = client
-        .activate_async(JackNotificationHandler::new(to_msg_channel_tx, sample_rate), process)?;
+        .activate_async(JackNotificationHandler::new(to_stream_handle_tx, sample_rate), process)?;
 
     // --- Connect system audio ports to client ports ----------------------------------------------
 
@@ -556,12 +557,12 @@ pub fn run<P: ProcessHandler>(
 
     Ok(StreamHandle {
         platform_handle: Box::new(JackStreamHandle { stream_info }),
-        messages: msg_channel,
+        messages: from_audio_thread_rx,
     })
 }
 
-pub(crate) fn push_stream_msg(to_msg_channel_tx: &mut Producer<StreamMsg>, msg: StreamMsg) {
-    if let Err(e) = to_msg_channel_tx.push(msg) {
+pub(crate) fn push_stream_msg(to_stream_handle_tx: &mut Producer<StreamMsg>, msg: StreamMsg) {
+    if let Err(e) = to_stream_handle_tx.push(msg) {
         log::error!("Failed to send stream message {:?}: message buffer is full!", e);
     }
 }

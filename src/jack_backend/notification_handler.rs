@@ -6,13 +6,13 @@ use crate::StreamMsg;
 use super::push_stream_msg;
 
 pub struct JackNotificationHandler {
-    to_msg_channel_tx: Producer<StreamMsg>,
+    to_stream_handle_tx: Producer<StreamMsg>,
     sample_rate: u32,
 }
 
 impl JackNotificationHandler {
-    pub fn new(to_msg_channel_tx: Producer<StreamMsg>, sample_rate: u32) -> Self {
-        Self { to_msg_channel_tx, sample_rate }
+    pub fn new(to_stream_handle_tx: Producer<StreamMsg>, sample_rate: u32) -> Self {
+        Self { to_stream_handle_tx, sample_rate }
     }
 }
 
@@ -27,7 +27,7 @@ impl jack::NotificationHandler for JackNotificationHandler {
         log::error!("{}", msg);
 
         push_stream_msg(
-            &mut self.to_msg_channel_tx,
+            &mut self.to_stream_handle_tx,
             StreamMsg::Error(StreamError::AudioServerShutdown { msg: Some(msg) }),
         );
     }
@@ -43,7 +43,7 @@ impl jack::NotificationHandler for JackNotificationHandler {
             log::error!("JACK: sample rate changed to {}", srate);
 
             push_stream_msg(
-                &mut self.to_msg_channel_tx,
+                &mut self.to_stream_handle_tx,
                 StreamMsg::Error(StreamError::AudioServerChangedSamplerate(srate)),
             );
 

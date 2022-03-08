@@ -1,5 +1,6 @@
 use crate::error::{ChangeAudioPortsError, ChangeBlockSizeError, RunConfigError};
-use crate::{AutoOption, Backend, ProcessInfo, RainoutConfig, StreamInfo, StreamMsgChannel};
+use crate::{AutoOption, Backend, ProcessInfo, RainoutConfig, StreamInfo, StreamMsg};
+use ringbuf::Consumer;
 
 #[cfg(feature = "midi")]
 use crate::{error::ChangeMidiPortsError, MidiPortConfig};
@@ -226,7 +227,7 @@ pub fn run<P: ProcessHandler>(
 pub struct StreamHandle<P: ProcessHandler> {
     /// The message channel that recieves notifications from the audio thread
     /// including any errors that have occurred.
-    pub messages: StreamMsgChannel,
+    pub messages: Consumer<StreamMsg>,
 
     pub(crate) platform_handle: Box<dyn PlatformStreamHandle<P>>,
 }

@@ -154,7 +154,6 @@ pub struct AudioBackendOptions {
     pub device_options: Option<AudioDeviceOptions>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
 /// The status of a backend
 pub enum BackendStatus {
     /// The backend is installed and running with available devices
@@ -205,7 +204,6 @@ pub enum AudioDeviceOptions {
     },
 }
 
-#[derive(Debug, Clone)]
 /// The available configuration options for the audio device/devices
 pub struct AudioDeviceConfigOptions {
     /// The available sample rates to choose from.
@@ -238,8 +236,6 @@ pub struct AudioDeviceConfigOptions {
     pub can_take_exclusive_access: bool,
 }
 
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq)]
 /// The channel layout of the audio ports
 pub enum ChannelLayout {
     /// The device has not specified the channel layout of the audio ports
@@ -262,7 +258,6 @@ pub enum ChannelLayout {
 }
 
 /// The range of possible block sizes for an audio device.
-#[derive(Debug, Clone)]
 pub struct BlockSizeRange {
     /// The minimum buffer/block size that can be used (inclusive)
     pub min: u32,
@@ -275,7 +270,6 @@ pub struct BlockSizeRange {
 }
 
 #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-#[derive(Debug, Clone)]
 /// Information and configuration options for the "monolithic" system-wide
 /// Jack audio device
 pub struct JackAudioDeviceOptions {
@@ -304,7 +298,6 @@ pub struct JackAudioDeviceOptions {
 
 #[cfg(feature = "asio")]
 #[cfg(target_os = "windows")]
-#[derive(Debug, Clone)]
 /// Information and configuration options for an ASIO audio device on
 /// Windows
 pub struct AsioAudioDeviceOptions {
@@ -317,7 +310,6 @@ pub struct AsioAudioDeviceOptions {
 }
 
 #[cfg(feature = "midi")]
-#[derive(Debug, Clone)]
 /// Information about a MIDI backend, including its available devices
 /// and configurations
 pub struct MidiBackendOptions {
@@ -348,7 +340,6 @@ pub struct MidiBackendOptions {
 }
 
 #[cfg(feature = "midi")]
-#[derive(Debug, Clone)]
 /// Information and configuration options for a MIDI device port
 pub struct MidiPortOptions {
     /// The name/ID of this device
@@ -362,8 +353,6 @@ pub struct MidiPortOptions {
 }
 
 #[cfg(feature = "midi")]
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq)]
 /// The type of control scheme that this port supports
 pub enum MidiControlScheme {
     /// Supports only MIDI version 1
@@ -382,7 +371,6 @@ pub enum MidiControlScheme {
 This is the API for the "configuration". The user constructs this configuration in whatever method they choose (from a settings GUI or a config file) and sends it to this crate to be ran.
 
 ```rust
-#[derive(Debug, Clone, PartialEq)]
 /// Specifies whether to use a specific configuration or to automatically
 /// select the best configuration.
 pub enum AutoOption<T: Debug + Clone + PartialEq> {
@@ -393,8 +381,6 @@ pub enum AutoOption<T: Debug + Clone + PartialEq> {
     Auto,
 }
 
-#[cfg(not(feature = "serde-config"))]
-#[derive(Debug, Clone, PartialEq)]
 /// The configuration of audio and MIDI backends and devices.
 pub struct RainoutConfig {
     /// The audio backend to use.
@@ -497,7 +483,6 @@ pub struct RainoutConfig {
     pub midi_config: Option<MidiConfig>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
 /// The configuration of which audio device/devices to use.
 pub enum AudioDeviceConfig {
     /// Use a single audio device. These device may be output only, input
@@ -593,7 +578,6 @@ pub trait ProcessHandler: 'static + Send {
 
 // See code in the repo for the implementations of `StreamInfo` and `ProcessInfo`.
 
-#[derive(Debug, Clone)]
 /// Additional options for running a stream
 pub struct RunOptions {
     /// If `Some`, then the backend will use this name as the
@@ -667,7 +651,7 @@ pub fn run<P: ProcessHandler>(
 pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
     /// The message channel that recieves notifications from the audio thread
     /// including any errors that have occurred.
-    pub messages: StreamMsgChannel,
+    pub messages: ringbuf::Consumer<StreamMsg>,
 
     ...
 }
@@ -763,7 +747,6 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
 After a stream is ran, the user then listens to and responds to events sent to `StreamHandle::messages`.
 
 ```rust
-#[derive(Debug, Clone)]
 pub enum StreamMsg {
     /// An audio device was unplugged while the stream was running. Any connected
     /// ports will input/output silence.
@@ -793,51 +776,6 @@ pub enum StreamMsg {
     /// The audio stream was closed gracefully. Please discard this Stream Handle.
     Closed,
 }
-
-/// The message channel that recieves notifications from the audio thread including
-/// any errors that have occurred.
-pub struct StreamMsgChannel {
-    from_audio_thread_rx: Consumer<StreamMsg>,
-}
-
-impl StreamMsgChannel {
-    pub(crate) fn new(msg_buffer_size: usize) -> (Self, ringbuf::Producer<StreamMsg>) {
-        let (to_channel_tx, from_audio_thread_rx) =
-            RingBuffer::<StreamMsg>::new(msg_buffer_size).split();
-
-        (Self { from_audio_thread_rx }, to_channel_tx)
-    }
-
-    /// Returns capacity of the message buffer.
-    ///
-    /// The capacity of the buffer is constant.
-    pub fn capacity(&self) -> usize {
-        self.from_audio_thread_rx.capacity()
-    }
-
-    /// Checks if the message buffer is empty.
-    ///
-    /// *The result may become irrelevant at any time because of concurring activity of the producer.*
-    pub fn is_empty(&self) -> bool {
-        self.from_audio_thread_rx.is_empty()
-    }
-
-    /// Removes latest element from the message buffer and returns it.
-    /// Returns `None` if the message buffer is empty.
-    pub fn pop(&mut self) -> Option<StreamMsg> {
-        self.from_audio_thread_rx.pop()
-    }
-
-    /// Repeatedly calls the closure `f` passing elements removed from the message buffer to it.
-    ///
-    /// The closure is called until it returns `false` or the message buffer is empty.
-    ///
-    /// The method returns number of elements been removed from the buffer.
-    pub fn pop_each<F: FnMut(StreamMsg) -> bool>(&mut self, f: F, count: Option<usize>) -> usize {
-        self.from_audio_thread_rx.pop_each(f, count)
-    }
-}
-
 // See code in the repo for the implementation of `StreamError`.
 ```
 
