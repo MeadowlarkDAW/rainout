@@ -1,4 +1,4 @@
-use crate::Backend;
+use crate::{Backend, wasapi_backend};
 
 #[cfg(all(target_os = "linux", feature = "jack-linux"))]
 use crate::jack_backend;
@@ -19,6 +19,8 @@ pub fn available_audio_backends() -> &'static [Backend] {
         Backend::Jack,
         #[cfg(all(target_os = "windows", feature = "jack-windows"))]
         Backend::Jack,
+        #[cfg(target_os = "windows")]
+        Backend::Wasapi,
     ]
 }
 
@@ -69,8 +71,12 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
                 return Err(());
             }
         }
+        #[cfg(target_os = "windows")]
+        Backend::Wasapi => {
+            wasapi_backend::enumerate_audio_backend()
+        }
         b => {
-            log::error!("Unkown audio backend: {:?}", b);
+            log::error!("Unknown audio backend: {:?}", b);
             Err(())
         }
     }
@@ -105,7 +111,7 @@ pub fn enumerate_audio_device(
             Err(())
         }
         b => {
-            log::error!("Unkown audio backend: {:?}", b);
+            log::error!("Unknown audio backend: {:?}", b);
             Err(())
         }
     }
@@ -186,7 +192,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
             }
         }
         b => {
-            log::error!("Unkown MIDI backend: {:?}", b);
+            log::error!("Unknown MIDI backend: {:?}", b);
             Err(())
         }
     }
@@ -453,7 +459,7 @@ pub enum MidiControlScheme {
     #[cfg(feature = "midi2")]
     /// Supports MIDI version 2 (and by proxy also supports MIDI version 1)
     Midi2,
-    // TODO: Midi versions inbetween 1.0 and 2.0?
+    // TODO: Midi versions in between 1.0 and 2.0?
     // TODO: OSC devices?
 }
 
@@ -469,7 +475,7 @@ pub enum MidiControlScheme {
     #[cfg(feature = "midi2")]
     /// Supports MIDI version 2 (and by proxy also supports MIDI version 1)
     Midi2,
-    // TODO: Midi versions inbetween 1.0 and 2.0?
+    // TODO: Midi versions in between 1.0 and 2.0?
     // TODO: OSC devices?
 }
 

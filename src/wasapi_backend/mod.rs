@@ -3,7 +3,9 @@ use std::error::Error;
 use wasapi::{initialize_sta, DeviceCollection, Direction};
 
 use crate::{
-    AudioBackendOptions, AudioDeviceConfigOptions, AudioDeviceOptions, ChannelLayout, DeviceID, error::RunConfigError, RainoutConfig, RunOptions, ProcessHandler, StreamHandle,
+    error::RunConfigError, AudioBackendOptions, AudioDeviceConfigOptions, AudioDeviceOptions,
+    BackendStatus, ChannelLayout, DeviceID, ProcessHandler, RainoutConfig, RunOptions,
+    StreamHandle, Backend,
 };
 
 // From the wasapi crate
@@ -31,27 +33,25 @@ fn get_device_ids(collection: &DeviceCollection) -> Result<Vec<DeviceID>, ()> {
     Ok(result)
 }
 
-pub fn enumerate_backend() -> Result<AudioBackendOptions, ()> {
+pub fn enumerate_audio_backend() -> Result<AudioBackendOptions, ()> {
     // TODO: No idea if this is cheap
     initialize_sta();
     let input_devices = convert_result(DeviceCollection::new(&Direction::Capture))?;
     let output_devices = convert_result(DeviceCollection::new(&Direction::Render))?;
 
+    let device_count = convert_result(input_devices.get_nbr_devices())?
+        + convert_result(output_devices.get_nbr_devices())?;
+
     Ok(AudioBackendOptions {
-        name: "wasapi",
+        backend: Backend::Wasapi,
         version: None,
-        device_options: AudioDeviceOptions::LinkedInOutDevice {
-            input_devices: get_device_ids(&input_devices)?,
-            output_devices: get_device_ids(&output_devices)?,
-            config_options: AudioDeviceConfigOptions {
-                sample_rates: Some(vec![44100]),
-                block_sizes: None,
-                num_input_ports: 1,  // ???
-                num_output_ports: 1, // ???
-                input_channel_layout: ChannelLayout::Stereo,
-                output_channel_layout: ChannelLayout::Stereo,
-                can_take_exclusive_access: true,
-            },
+        device_options: Some(AudioDeviceOptions::LinkedInOutDevice {
+            in_devices: get_device_ids(&input_devices)?,
+            out_devices: get_device_ids(&output_devices)?,
+        }),
+        status: match device_count {
+            0 => BackendStatus::NoDevices,
+            _ => BackendStatus::Running,
         },
     })
 }
@@ -72,13 +72,13 @@ pub fn enumerate_audio_device(
         // https://stackoverflow.com/q/20371033/8166701
         block_sizes: None,
 
-        num_input_ports: 1,  // ???
-        num_output_ports: 1, // ???
+        num_in_channels: 2,  // ???
+        num_out_channels: 2, // ???
 
         // TODO: This probably isn't always true. See:
         // https://stackoverflow.com/q/33047471/8166701
-        input_channel_layout: ChannelLayout::Stereo,
-        output_channel_layout: ChannelLayout::Stereo,
+        in_channel_layout: ChannelLayout::Stereo,
+        out_channel_layout: ChannelLayout::Stereo,
 
         // TODO: WASAPI has an "exclusive" mode. Verify that this means
         // the same.

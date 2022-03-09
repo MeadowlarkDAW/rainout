@@ -4,6 +4,8 @@ pub(crate) mod jack_backend;
 pub(crate) mod jack_backend;
 #[cfg(all(target_os = "windows", feature = "jack-windows"))]
 pub(crate) mod jack_backend;
+#[cfg(target_os = "windows")]
+pub(crate) mod wasapi_backend;
 
 #[cfg(feature = "serde-config")]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

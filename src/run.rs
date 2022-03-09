@@ -17,11 +17,10 @@ pub fn estimated_sample_rate_and_latency(
 ) -> Result<(Option<u32>, Option<u32>), RunConfigError> {
     let use_audio_backend = match config.audio_backend {
         AutoOption::Use(b) => b,
-        AutoOption::Auto =>
-        {
-            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            Backend::Jack
-        }
+        #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+        AutoOption::Auto => Backend::Jack,
+        #[cfg(target_os = "windows")]
+        AutoOption::Auto => Backend::Wasapi,
     };
 
     match use_audio_backend {
@@ -51,7 +50,7 @@ pub fn estimated_sample_rate_and_latency(
             }
         }
         b => {
-            log::error!("Unkown audio backend: {:?}", b);
+            log::error!("Unknown audio backend: {:?}", b);
             return Err(RunConfigError::AudioBackendNotFound(b));
         }
     }
@@ -75,7 +74,7 @@ pub trait ProcessHandler: 'static + Send {
 /// Additional options for running a stream
 pub struct RunOptions {
     /// If `Some`, then the backend will use this name as the
-    /// client name that appears in the audio server. This is only relevent for some
+    /// client name that appears in the audio server. This is only relevant for some
     /// backends like Jack.
     ///
     /// By default this is set to `None`.
@@ -158,21 +157,19 @@ pub fn run<P: ProcessHandler>(
 ) -> Result<StreamHandle<P>, RunConfigError> {
     let use_audio_backend = match config.audio_backend {
         AutoOption::Use(b) => b,
-        AutoOption::Auto =>
-        {
-            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            Backend::Jack
-        }
+        #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+        AutoOption::Auto => Backend::Jack,
+        #[cfg(target_os = "windows")]
+        AutoOption::Auto => Backend::Wasapi,
     };
 
     let use_midi_backend = match &config.midi_config {
         Some(midi_config) => match midi_config.midi_backend {
             AutoOption::Use(b) => Some(b),
-            AutoOption::Auto =>
-            {
-                #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-                Some(Backend::Jack)
-            }
+            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+            AutoOption::Auto => Some(Backend::Jack),
+            #[cfg(target_os = "windows")]
+            AutoOption::Auto => None,
         },
         None => None,
     };
@@ -213,7 +210,7 @@ pub fn run<P: ProcessHandler>(
                 }
             }
             b => {
-                log::error!("Unkown audio backend: {:?}", b);
+                log::error!("Unknown audio backend: {:?}", b);
                 return Err(RunConfigError::AudioBackendNotFound(b));
             }
         }
@@ -225,7 +222,7 @@ pub fn run<P: ProcessHandler>(
 // When this gets dropped, the stream (audio thread) will automatically stop. This
 /// is the intended method for stopping a stream.
 pub struct StreamHandle<P: ProcessHandler> {
-    /// The message channel that recieves notifications from the audio thread
+    /// The message channel that receives notifications from the audio thread
     /// including any errors that have occurred.
     pub messages: Consumer<StreamMsg>,
 
