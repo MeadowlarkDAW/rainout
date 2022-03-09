@@ -23,6 +23,7 @@ serde-config = ["serde"]
 
 [workspace]
 members = [
+    "examples/settings_gui_demo",
 ]
 
 [dependencies]

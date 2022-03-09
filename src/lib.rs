@@ -1,17 +1,46 @@
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-use linux as platform;
+#[cfg(all(target_os = "linux", feature = "jack-linux"))]
+pub(crate) mod jack_backend;
+#[cfg(all(target_os = "macos", feature = "jack-macos"))]
+pub(crate) mod jack_backend;
+#[cfg(all(target_os = "windows", feature = "jack-windows"))]
+pub(crate) mod jack_backend;
 
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "macos")]
-use macos as platform;
+#[cfg(feature = "serde-config")]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+/// The list of backends supported by rainout
+pub enum Backend {
+    Jack,
+    Pipewire,
+    Alsa,
+    CoreAudio,
+    Wasapi,
+    Asio,
+}
 
-#[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-use windows as platform;
+#[cfg(not(feature = "serde-config"))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The list of backends supported by rainout
+pub enum Backend {
+    Jack,
+    Pipewire,
+    Alsa,
+    CoreAudio,
+    Wasapi,
+    Asio,
+}
+
+impl Backend {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Backend::Jack => "Jack",
+            Backend::Pipewire => "Pipewire",
+            Backend::Alsa => "Alsa",
+            Backend::CoreAudio => "CoreAudio",
+            Backend::Wasapi => "WASAPI",
+            Backend::Asio => "ASIO",
+        }
+    }
+}
 
 mod configuration;
 mod enumeration;
@@ -24,7 +53,6 @@ mod stream_message;
 mod midi_buffer;
 
 pub mod error;
-pub mod error_behavior;
 
 pub use configuration::*;
 pub use enumeration::*;

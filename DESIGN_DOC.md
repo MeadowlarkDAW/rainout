@@ -2,7 +2,7 @@
 
 # Objective
 
-The goal of this crate is to provide a powerful, cross-platform, highly configurable, low-latency, and robust solution for connecting audio software to audio and MIDI devices.
+The goal of this crate is to provide a powerful, cross-platform, highly configurable, low-latency, and robust solution for connecting to audio and MIDI devices.
 
 ## Why not contribute to an already existing project like `RTAudio` or `CPAL`?
 
@@ -65,31 +65,51 @@ The API is divided into four parts: Enumerating the available devices, creating 
 ## Device Enumeration API:
 
 ```rust
+/// The list of backends supported by rainout
+pub enum Backend {
+    Jack,
+    Pipewire,
+    Alsa,
+    CoreAudio,
+    Wasapi,
+    Asio,
+}
+
 /// Returns the list available audio backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
-pub fn available_audio_backends() -> &'static [&'static str] { ... }
+pub fn available_audio_backends() -> &'static [Backend] { ... }
 
 #[cfg(feature = "midi")]
 /// Returns the list available midi backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
 /// preferred default backend.
-pub fn available_midi_backends() -> &'static [&'static str] { ... }
+pub fn available_midi_backends() -> &'static [Backend] { ... }
 
 /// Returns the list of available audio devices for the given backend.
 ///
 /// This will return an error if the backend with the given name could
 /// not be found.
-pub fn enumerate_audio_backend(backend: &str) -> Result<AudioBackendOptions, ()> { ... }
+pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, ()> { ... }
+
+/// The name/ID of a device
+pub struct DeviceID {
+    /// The name of the device
+    pub name: String,
+
+    /// The unique identifier of this device (if one is available). This
+    /// is usually more reliable than just the name of the device.
+    pub identifier: Option<String>,
+}
 
 /// Returns the configuration options for the given device.
 ///
 /// This will return an error if the backend or the device could not
 /// be found.
 pub fn enumerate_audio_device(
-    backend: &str,
+    backend: Backend,
     device: &DeviceID,
 ) -> Result<AudioDeviceConfigOptions, ()> { ... }
 
@@ -113,19 +133,41 @@ pub fn enumerate_asio_audio_device(device: &DeviceID) -> Result<AsioAudioDeviceO
 ///
 /// This will return an error if the backend with the given name could
 /// not be found.
-pub fn enumerate_midi_backend(backend: &str) -> Result<MidiBackendOptions, ()> { ... }
+pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()> { ... }
 
 /// Information about an audio backend, including its available devices
 /// and configurations
 pub struct AudioBackendOptions {
-    /// The name of this audio backend
-    pub name: &'static str,
+    /// The audio backend
+    pub backend: Backend,
 
     /// The version of this audio backend (if that information is available)
     pub version: Option<String>,
 
-    /// The available audio devices to select from
-    pub device_options: AudioDeviceOptions,
+    /// The running status of this backend
+    pub status: BackendStatus,
+
+    /// The available audio devices to select from.
+    ///
+    /// This will be `None` if this backend's `status` is not of the type
+    /// `BackendStatus::Running`.
+    pub device_options: Option<AudioDeviceOptions>,
+}
+
+/// The status of a backend
+pub enum BackendStatus {
+    /// The backend is installed and running with available devices
+    Running,
+
+    /// The backend is installed and running, but no devices were found
+    NoDevices,
+
+    /// The backend is not installed on the system and thus cannot be used
+    NotInstalled,
+
+    /// The backend is installed but it is not currently running on the system,
+    /// and thus cannot be used until it is started
+    NotRunning,
 }
 
 /// The available audio devices to select from
@@ -141,12 +183,9 @@ pub enum AudioDeviceOptions {
     /// A single input and output device pair can be selected from this list.
     LinkedInOutDevice {
         /// The names/IDs of the available input devices to select from
-        input_devices: Vec<DeviceID>,
+        in_devices: Vec<DeviceID>,
         /// The names/IDs of the available output devices to select from
-        output_devices: Vec<DeviceID>,
-
-        /// The available configurations for this device pair
-        config_options: AudioDeviceConfigOptions,
+        out_devices: Vec<DeviceID>,
     },
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -162,17 +201,6 @@ pub enum AudioDeviceOptions {
     },
 }
 
-/// The name/ID of a device
-pub struct DeviceID {
-    /// The name of the device
-    pub name: String,
-
-    /// The unique identifier of this device (if one is available). This
-    /// is usually more reliable than just the name of the device.
-    pub identifier: Option<String>,
-}
-
-#[derive(Debug, Clone)]
 /// The available configuration options for the audio device/devices
 pub struct AudioDeviceConfigOptions {
     /// The available sample rates to choose from.
@@ -187,15 +215,15 @@ pub struct AudioDeviceConfigOptions {
     /// will be `None`.
     pub block_sizes: Option<BlockSizeRange>,
 
-    /// The number of input audio ports available
-    pub num_input_ports: usize,
-    /// The number of output audio ports available
-    pub num_output_ports: usize,
+    /// The number of input audio channels available
+    pub num_in_channels: usize,
+    /// The number of output audio channels available
+    pub num_out_channels: usize,
 
-    /// The layout of the input audio ports
-    pub input_channel_layout: ChannelLayout,
-    /// The layout of the output audio ports
-    pub output_channel_layout: ChannelLayout,
+    /// The layout of the input audio channels
+    pub in_channel_layout: ChannelLayout,
+    /// The layout of the output audio channels
+    pub out_channel_layout: ChannelLayout,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.
@@ -205,8 +233,6 @@ pub struct AudioDeviceConfigOptions {
     pub can_take_exclusive_access: bool,
 }
 
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq)]
 /// The channel layout of the audio ports
 pub enum ChannelLayout {
     /// The device has not specified the channel layout of the audio ports
@@ -229,7 +255,6 @@ pub enum ChannelLayout {
 }
 
 /// The range of possible block sizes for an audio device.
-#[derive(Debug, Clone)]
 pub struct BlockSizeRange {
     /// The minimum buffer/block size that can be used (inclusive)
     pub min: u32,
@@ -242,19 +267,9 @@ pub struct BlockSizeRange {
 }
 
 #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-#[derive(Debug, Clone)]
 /// Information and configuration options for the "monolithic" system-wide
 /// Jack audio device
 pub struct JackAudioDeviceOptions {
-    /// If this is `false`, then it means that Jack is not installed on the
-    /// system and thus cannot be used.
-    pub installed_on_sytem: bool,
-
-    /// If this is `false`, then it means that Jack is installed but it is
-    /// not currently running on the system, and thus cannot be used until
-    /// the Jack server is started.
-    pub running: bool,
-
     /// The sample rate of the Jack device
     pub sample_rate: u32,
 
@@ -262,25 +277,24 @@ pub struct JackAudioDeviceOptions {
     pub block_size: u32,
 
     /// The names of the available input ports to select from
-    pub input_ports: Vec<String>,
+    pub in_ports: Vec<String>,
     /// The names of the available output ports to select from
-    pub output_ports: Vec<String>,
+    pub out_ports: Vec<String>,
 
     /// The indexes of the default input ports, along with their channel
     /// layout.
     ///
     /// If no default input ports could be found, then this will be `None`.
-    pub default_input_ports: Option<(Vec<usize>, ChannelLayout)>,
+    pub default_in_ports: Option<(Vec<usize>, ChannelLayout)>,
     /// The indexes of the default output ports, along with their channel
     /// layout.
     ///
     /// If no default output ports could be found, then this will be `None`.
-    pub default_output_ports: Option<(Vec<usize>, ChannelLayout)>,
+    pub default_out_ports: Option<(Vec<usize>, ChannelLayout)>,
 }
 
 #[cfg(feature = "asio")]
 #[cfg(target_os = "windows")]
-#[derive(Debug, Clone)]
 /// Information and configuration options for an ASIO audio device on
 /// Windows
 pub struct AsioAudioDeviceOptions {
@@ -293,20 +307,22 @@ pub struct AsioAudioDeviceOptions {
 }
 
 #[cfg(feature = "midi")]
-#[derive(Debug, Clone)]
 /// Information about a MIDI backend, including its available devices
 /// and configurations
 pub struct MidiBackendOptions {
-    /// The name of this MIDI backend
-    pub name: &'static str,
+    /// The MIDI backend
+    pub backend: Backend,
 
     /// The version of this MIDI backend (if that information is available)
     pub version: Option<String>,
 
+    /// The running status of this backend
+    pub status: BackendStatus,
+
     /// The names of the available input MIDI devices to select from
-    pub in_device_ports: Vec<MidiDevicePortOptions>,
+    pub in_device_ports: Vec<MidiPortOptions>,
     /// The names of the available output MIDI devices to select from
-    pub out_device_ports: Vec<MidiDevicePortOptions>,
+    pub out_device_ports: Vec<MidiPortOptions>,
 
     /// The index of the default/preferred input MIDI port for the backend
     ///
@@ -321,9 +337,8 @@ pub struct MidiBackendOptions {
 }
 
 #[cfg(feature = "midi")]
-#[derive(Debug, Clone)]
 /// Information and configuration options for a MIDI device port
-pub struct MidiDevicePortOptions {
+pub struct MidiPortOptions {
     /// The name/ID of this device
     pub id: DeviceID,
 
@@ -331,12 +346,10 @@ pub struct MidiDevicePortOptions {
     pub port_index: usize,
 
     /// The type of control scheme that this port uses
-    pub control_type: MidiControlType,
+    pub control_type: MidiControlScheme,
 }
 
 #[cfg(feature = "midi")]
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq)]
 /// The type of control scheme that this port supports
 pub enum MidiControlScheme {
     /// Supports only MIDI version 1
@@ -355,8 +368,6 @@ pub enum MidiControlScheme {
 This is the API for the "configuration". The user constructs this configuration in whatever method they choose (from a settings GUI or a config file) and sends it to this crate to be ran.
 
 ```rust
-#[cfg(not(feature = "serde-config"))]
-#[derive(Debug, Clone, PartialEq)]
 /// Specifies whether to use a specific configuration or to automatically
 /// select the best configuration.
 pub enum AutoOption<T: Debug + Clone + PartialEq> {
@@ -367,21 +378,13 @@ pub enum AutoOption<T: Debug + Clone + PartialEq> {
     Auto,
 }
 
-impl<T: Debug + Clone + PartialEq> Default for AutoOption<T> {
-    fn default() -> Self {
-        AutoOption::Auto
-    }
-}
-
-#[cfg(not(feature = "serde-config"))]
-#[derive(Debug, Clone, PartialEq)]
 /// The configuration of audio and MIDI backends and devices.
 pub struct RainoutConfig {
     /// The audio backend to use.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// backend to use.
-    pub audio_backend: AutoOption<String>,
+    pub audio_backend: AutoOption<Backend>,
 
     /// The audio device/devices to use.
     ///
@@ -401,38 +404,38 @@ pub struct RainoutConfig {
     /// buffer/block size to use.
     pub block_size: AutoOption<u32>,
 
-    /// The indexes of the audio input ports to use.
+    /// The indexes of the audio input channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of input ports to use.
+    /// configuration of input channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub input_channels: AutoOption<Vec<usize>>,
+    pub in_channels: AutoOption<Vec<usize>>,
 
-    /// The indexes of the audio output ports to use.
+    /// The indexes of the audio output channels to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of output ports to use.
+    /// configuration of output channels to use.
     ///
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is not relevent when the audio backend is Jack.
-    pub output_channels: AutoOption<Vec<usize>>,
+    pub out_channels: AutoOption<Vec<usize>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio input ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_in` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_in` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -443,14 +446,14 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio inputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_input_ports: AutoOption<Vec<String>>,
+    pub jack_in_ports: AutoOption<Vec<String>>,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// When the audio backend is Jack, the names of the audio output ports
     /// to use.
     ///
-    /// The buffers presented in `ProcInfo::audio_out` will appear in this
-    /// exact same order.
+    /// The buffers presented in `ProcInfo::audio_out` will appear in the
+    /// exact same order as this Vec.
     ///
     /// If a port with the given name does not exist, then an unconnected
     /// virtual port with that same name will be created.
@@ -461,7 +464,7 @@ pub struct RainoutConfig {
     /// You may also pass in an empty Vec to have no audio outputs.
     ///
     /// This is only relevent when the audio backend is Jack.
-    pub jack_output_ports: AutoOption<Vec<String>>,
+    pub jack_out_ports: AutoOption<Vec<String>>,
 
     /// If `true` then it means that the application can request to take
     /// exclusive access of the device to improve latency.
@@ -477,31 +480,6 @@ pub struct RainoutConfig {
     pub midi_config: Option<MidiConfig>,
 }
 
-impl Default for RainoutConfig {
-    fn default() -> Self {
-        RainoutConfig {
-            audio_backend: AutoOption::Auto,
-            audio_device: AudioDeviceConfig::Auto,
-            sample_rate: AutoOption::Auto,
-            block_size: AutoOption::Auto,
-            input_channels: AutoOption::Use(Vec::new()),
-            output_channels: AutoOption::Auto,
-
-            #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-            jack_input_ports: AutoOption::Use(Vec::new()),
-            #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-            jack_output_ports: AutoOption::Auto,
-
-            take_exclusive_access: false,
-
-            #[cfg(feature = "midi")]
-            midi_config: None,
-        }
-    }
-}
-
-#[cfg(not(feature = "serde-config"))]
-#[derive(Debug, Clone, PartialEq)]
 /// The configuration of which audio device/devices to use.
 pub enum AudioDeviceConfig {
     /// Use a single audio device. These device may be output only, input
@@ -518,12 +496,6 @@ pub enum AudioDeviceConfig {
     Auto,
 }
 
-impl Default for AudioDeviceConfig {
-    fn default() -> Self {
-        AudioDeviceConfig::Auto
-    }
-}
-
 #[cfg(feature = "midi")]
 /// The configuration of the MIDI backend and devices.
 pub struct MidiConfig {
@@ -531,12 +503,12 @@ pub struct MidiConfig {
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// backend to use.
-    pub midi_backend: AutoOption<String>,
+    pub midi_backend: AutoOption<Backend>,
 
     /// The names of the MIDI input ports to use.
     ///
     /// The buffers presented in `ProcInfo::midi_in` will appear in this
-    /// exact same order.
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of input ports to use.
@@ -547,23 +519,13 @@ pub struct MidiConfig {
     /// The names of the MIDI output ports to use.
     ///
     /// The buffers presented in `ProcInfo::midi_out` will appear in this
-    /// exact same order.
+    /// exact same order as this Vec.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
     /// configuration of output ports to use.
     ///
     /// You may also pass in an empty Vec to have no MIDI outputs.
     pub out_device_ports: AutoOption<Vec<MidiDevicePortConfig>>,
-}
-
-impl Default for MidiConfig {
-    fn default() -> Self {
-        MidiConfig {
-            midi_backend: AutoOption::Auto,
-            in_device_ports: AutoOption::Auto,
-            out_device_ports: AutoOption::Use(Vec::new()),
-        }
-    }
 }
 
 #[cfg(feature = "midi")]
@@ -586,17 +548,16 @@ pub struct MidiDevicePortConfig {
 The user sends a config to this API to run it.
 
 ```rust
-/// Get the estimated total latency of a particular configuration before running it.
+/// Get the estimated sample rate and total latency of a particular configuration
+/// before running it.
 ///
-/// `None` will be returned if the latency is not known at this time or if the
-/// given config is invalid.
-pub fn estimated_latency(config: &RainoutConfig) -> Option<u32> { ... }
-
-/// Get the sample rate of a particular configuration before running it.
+/// `None` will be returned if the sample rate or latency is not known at this
+/// time.
 ///
-/// `None` will be returned if the sample rate is not known at this time or if the
-/// given config is invalid.
-pub fn sample_rate(config: &RainoutConfig) -> Option<u32> { ... }
+/// `(Option<SAMPLE_RATE>, Option<LATENCY>)`
+pub fn estimated_sample_rate_and_latency(
+    config: &RainoutConfig,
+) -> Result<(Option<u32>, Option<u32>), RunConfigError> { ... }
 
 /// A processor for a stream.
 pub trait ProcessHandler: 'static + Send {
@@ -614,7 +575,6 @@ pub trait ProcessHandler: 'static + Send {
 
 // See code in the repo for the implementations of `StreamInfo` and `ProcessInfo`.
 
-#[derive(Debug, Clone)]
 /// Additional options for running a stream
 pub struct RunOptions {
     /// If `Some`, then the backend will use this name as the
@@ -623,6 +583,14 @@ pub struct RunOptions {
     ///
     /// By default this is set to `None`.
     pub use_application_name: Option<String>,
+
+    /// If this is `true`, then the system will try to automatically connect to
+    /// the default audio input channels when using `AutoOption::Auto`.
+    ///
+    /// If you only want audio outputs, then set this to `false`.
+    ///
+    /// By default this is set to `false`.
+    pub auto_audio_inputs: bool,
 
     #[cfg(feature = "midi")]
     /// The maximum number of events a MIDI buffer can hold.
@@ -639,16 +607,25 @@ pub struct RunOptions {
     /// By default this is set to `false`.
     pub check_for_silent_inputs: bool,
 
-    /// How the system should respond to various errors.
-    pub error_behavior: ErrorBehavior,
+    /// If `true`, then the system will return an error if it was not able to
+    /// connect to a device with at-least two output channels. It will also try
+    /// to avoid automatically connecting to devices with mono outputs.
+    ///
+    /// By default this is set to `true`.
+    pub must_have_stereo_output: bool,
+
+    /// If `true`, then the system will use empty (silent) buffers for any
+    /// audio/MIDI channels/ports that failed to connect instead of returning an
+    /// error.
+    ///
+    /// By default this is set to `false`.
+    pub empty_buffers_for_failed_ports: bool,
 
     /// The size of the audio thread to stream handle message buffer.
     ///
     /// By default this is set to `512`.
     pub msg_buffer_size: usize,
 }
-
-// See code in the repo for the implementation of `ErrorBehavior`.
 
 /// Run the given configuration in an audio thread.
 ///
@@ -671,7 +648,7 @@ pub fn run<P: ProcessHandler>(
 pub struct StreamHandle<P: ProcessHandler, E: ErrorHandler> {
     /// The message channel that recieves notifications from the audio thread
     /// including any errors that have occurred.
-    pub messages: StreamMsgChannel,
+    pub messages: ringbuf::Consumer<StreamMsg>,
 
     ...
 }
@@ -686,21 +663,32 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_audio_port_config(
+    pub fn change_audio_channels(
         &mut self,
-        audio_in_ports: Option<Vec<String>>,
-        audio_out_ports: Option<Vec<String>>,
-    ) -> Result<(), ChangeAudioPortConfigError> { ... }
+        in_channels: Vec<usize>,
+        out_channels: Vec<usize>,
+    ) -> Result<(), ChangeAudioChannelsError> { ... }
 
-    /// Change the buffer size configuration while the audio thread is still running.
-    /// Support for this will depend on the backend.
+    #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+    /// Change the audio port configuration (when using the Jack backend) while the
+    /// audio thread is still running.
+    ///
+    /// This will return an error if the current backend is not Jack.
+    pub fn change_jack_audio_ports(
+        &mut self,
+        in_port_names: Vec<String>,
+        out_port_names: Vec<String>,
+    ) -> Result<(), ChangeAudioChannelsError> { ... }
+
+    /// Change the buffer/block size configuration while the audio thread is still
+    /// running. Support for this will depend on the backend.
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_audio_buffer_size_config(
+    pub fn change_block_size(
         &mut self,
-        config: AudioBufferSizeConfig,
-    ) -> Result<(), ChangeAudioBufferSizeError> { ... }
+        buffer_size: u32,
+    ) -> Result<(), ChangeBlockSizeError> { ... }
 
     #[cfg(feature = "midi")]
     /// Change the midi device configuration while the audio thread is still running.
@@ -708,27 +696,27 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
     ///
     /// If the given config is invalid, an error will be returned with no
     /// effect on the running audio thread.
-    pub fn change_midi_device_config(
+    pub fn change_midi_ports(
         &mut self,
-        in_devices: Vec<MidiDevicePortConfig>,
-        out_devices: Vec<MidiDevicePortConfig>,
-    ) -> Result<(), ChangeMidiDeviceConfigError> { ... }
+        in_devices: Vec<MidiPortConfig>,
+        out_devices: Vec<MidiPortConfig>,
+    ) -> Result<(), ChangeMidiPortsError> { ... }
 
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
-    /// Returns whether or not this backend supports changing the audio bus
+    /// Returns whether or not this backend supports changing the audio channel
     /// configuration while the audio thread is running.
-    pub fn can_change_audio_port_config(&self) -> bool { ... }
+    pub fn can_change_audio_channels(&self) -> bool { ... }
 
     // Returns whether or not this backend supports changing the buffer size
     // configuration while the audio thread is running.
-    pub fn can_change_audio_buffer_size_config(&self) -> bool { ... }
+    pub fn can_change_block_size(&self) -> bool { ... }
 
     #[cfg(feature = "midi")]
     /// Returns whether or not this backend supports changing the midi device
     /// config while the audio thread is running.
-    pub fn can_change_midi_device_config(&self) -> bool { ... }
+    pub fn can_change_midi_ports(&self) -> bool { ... }
 }
 
 // TODO: Implementations of `RunConfigErrorRunConfigError`, `ChangeAudioPortConfigError`,
@@ -740,7 +728,6 @@ impl<P: ProcessHandler, E: ErrorHandler> StreamHandle<P, E> {
 After a stream is ran, the user then listens to and responds to events sent to `StreamHandle::messages`.
 
 ```rust
-#[derive(Debug, Clone)]
 pub enum StreamMsg {
     /// An audio device was unplugged while the stream was running. Any connected
     /// ports will input/output silence.
@@ -770,51 +757,6 @@ pub enum StreamMsg {
     /// The audio stream was closed gracefully. Please discard this Stream Handle.
     Closed,
 }
-
-/// The message channel that recieves notifications from the audio thread including
-/// any errors that have occurred.
-pub struct StreamMsgChannel {
-    from_audio_thread_rx: Consumer<StreamMsg>,
-}
-
-impl StreamMsgChannel {
-    pub(crate) fn new(msg_buffer_size: usize) -> (Self, ringbuf::Producer<StreamMsg>) {
-        let (to_channel_tx, from_audio_thread_rx) =
-            RingBuffer::<StreamMsg>::new(msg_buffer_size).split();
-
-        (Self { from_audio_thread_rx }, to_channel_tx)
-    }
-
-    /// Returns capacity of the message buffer.
-    ///
-    /// The capacity of the buffer is constant.
-    pub fn capacity(&self) -> usize {
-        self.from_audio_thread_rx.capacity()
-    }
-
-    /// Checks if the message buffer is empty.
-    ///
-    /// *The result may become irrelevant at any time because of concurring activity of the producer.*
-    pub fn is_empty(&self) -> bool {
-        self.from_audio_thread_rx.is_empty()
-    }
-
-    /// Removes latest element from the message buffer and returns it.
-    /// Returns `None` if the message buffer is empty.
-    pub fn pop(&mut self) -> Option<StreamMsg> {
-        self.from_audio_thread_rx.pop()
-    }
-
-    /// Repeatedly calls the closure `f` passing elements removed from the message buffer to it.
-    ///
-    /// The closure is called until it returns `false` or the message buffer is empty.
-    ///
-    /// The method returns number of elements been removed from the buffer.
-    pub fn pop_each<F: FnMut(StreamMsg) -> bool>(&mut self, f: F, count: Option<usize>) -> usize {
-        self.from_audio_thread_rx.pop_each(f, count)
-    }
-}
-
 // See code in the repo for the implementation of `StreamError`.
 ```
 
