@@ -15,7 +15,7 @@ use crate::{
 
 use super::{JackNotificationHandler, JackProcessHandler, DUMMY_CLIENT_NAME};
 
-const DEFAULT_CLIENT_NAME: &'static str = "rustydaw_io_client";
+const DEFAULT_CLIENT_NAME: &'static str = env!("CARGO_PKG_NAME");
 
 pub fn estimated_sample_rate_and_latency(
     _config: &RainoutConfig,
@@ -50,6 +50,7 @@ pub fn run<P: ProcessHandler>(
 
     let client_name =
         options.use_application_name.clone().unwrap_or(String::from(DEFAULT_CLIENT_NAME));
+    let client_name_path = client_name.clone() + ":";
 
     log::debug!("Registering Jack client with name {}", &client_name);
 
@@ -107,13 +108,13 @@ pub fn run<P: ProcessHandler>(
             }
 
             if !system_audio_out_ports.is_empty() {
-                if system_audio_in_ports.len() == 1
+                if system_audio_out_ports.len() == 1
                     || default_out_port_left == default_out_port_right
                 {
-                    use_out_ports.push(system_audio_in_ports[default_out_port_left].clone());
+                    use_out_ports.push(system_audio_out_ports[default_out_port_left].clone());
                 } else {
-                    use_out_ports.push(system_audio_in_ports[default_out_port_left].clone());
-                    use_out_ports.push(system_audio_in_ports[default_out_port_right].clone());
+                    use_out_ports.push(system_audio_out_ports[default_out_port_left].clone());
+                    use_out_ports.push(system_audio_out_ports[default_out_port_right].clone());
                 }
             }
 
@@ -151,7 +152,7 @@ pub fn run<P: ProcessHandler>(
         let client_port = client.register_port(&client_port_name, jack::AudioIn::default())?;
 
         client_audio_in_ports.push(client_port);
-        client_audio_in_port_names.push(client_port_name);
+        client_audio_in_port_names.push(client_name_path.clone() + &client_port_name);
     }
 
     for (i, port) in use_audio_out_ports.iter().enumerate() {
@@ -170,7 +171,7 @@ pub fn run<P: ProcessHandler>(
         let client_port = client.register_port(&client_port_name, jack::AudioOut::default())?;
 
         client_audio_out_ports.push(client_port);
-        client_audio_out_port_names.push(client_port_name);
+        client_audio_out_port_names.push(client_name_path.clone() + &client_port_name);
     }
 
     // --- Register client MIDI ports ---------------------------------------------------------------
@@ -259,7 +260,7 @@ pub fn run<P: ProcessHandler>(
 
                             use_ports.push(MidiPortConfig {
                                 device_id: DeviceID {
-                                    name: system_audio_in_ports[default_out_port].clone(),
+                                    name: system_audio_out_ports[default_out_port].clone(),
                                     identifier: None,
                                 },
                                 port_index: 0,
@@ -318,7 +319,7 @@ pub fn run<P: ProcessHandler>(
                         client.register_port(&client_port_name, jack::MidiIn::default())?;
 
                     client_midi_in_ports.push(client_port);
-                    client_midi_in_port_names.push(client_port_name);
+                    client_midi_in_port_names.push(client_name_path.clone() + &client_port_name);
                 }
 
                 for (i, port_config) in use_midi_out_ports.iter().enumerate() {
@@ -350,7 +351,7 @@ pub fn run<P: ProcessHandler>(
                         client.register_port(&client_port_name, jack::MidiOut::default())?;
 
                     client_midi_out_ports.push(client_port);
-                    client_midi_out_port_names.push(client_port_name);
+                    client_midi_out_port_names.push(client_name_path.clone() + &client_port_name);
                 }
 
                 (
@@ -358,10 +359,10 @@ pub fn run<P: ProcessHandler>(
                     client_midi_out_ports,
                     Some(MidiPortInfo {
                         client_midi_in_port_names,
-                        client_midi_out_connected_to,
+                        client_midi_in_connected_to,
                         midi_in_port_info,
                         client_midi_out_port_names,
-                        client_midi_in_connected_to,
+                        client_midi_out_connected_to,
                         midi_out_port_info,
                     }),
                 )
@@ -444,7 +445,7 @@ pub fn run<P: ProcessHandler>(
                     e
                 );
                 if !options.empty_buffers_for_failed_ports {
-                    return Err(RunConfigError::JackAudioPortNotFound(in_port.clone()));
+                    return Err(RunConfigError::JackAudioPortNotFound(system_in_port.clone()));
                 }
             }
         }
@@ -458,12 +459,12 @@ pub fn run<P: ProcessHandler>(
             {
                 log::error!(
                     "Failed to connect jack audio ports src({}) dst({}): {}",
-                    out_port,
                     system_out_port,
+                    out_port,
                     e
                 );
                 if !options.empty_buffers_for_failed_ports {
-                    return Err(RunConfigError::JackAudioPortNotFound(out_port.clone()));
+                    return Err(RunConfigError::JackAudioPortNotFound(system_out_port.clone()));
                 }
             }
         }
@@ -522,7 +523,7 @@ pub fn run<P: ProcessHandler>(
     }
 
     Ok(StreamHandle {
-        platform_handle: Box::new(JackStreamHandle { stream_info }),
+        platform_handle: Box::new(JackStreamHandle { stream_info, async_client }),
         messages: from_audio_thread_rx,
     })
 }
@@ -533,11 +534,12 @@ pub(crate) fn push_stream_msg(to_stream_handle_tx: &mut Producer<StreamMsg>, msg
     }
 }
 
-pub struct JackStreamHandle {
+pub struct JackStreamHandle<P: ProcessHandler> {
     stream_info: StreamInfo,
+    async_client: jack::AsyncClient<JackNotificationHandler, JackProcessHandler<P>>,
 }
 
-impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle {
+impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle<P> {
     fn stream_info(&self) -> &StreamInfo {
         &self.stream_info
     }
