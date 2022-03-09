@@ -17,18 +17,6 @@ pub struct StreamInfo {
     /// The name/id of the audio device.
     pub audio_device: AudioDeviceStreamInfo,
 
-    /// The audio input channels in this stream.
-    ///
-    /// The buffers presented in the `ProcessInfo::audio_inputs` will
-    /// appear in this exact same order.
-    pub audio_in_channels: Vec<AudioChannelStreamInfo>,
-
-    /// The audio output channels in this stream.
-    ///
-    /// The buffers presented in the `ProcessInfo::audio_outputs` will
-    /// appear in this exact same order.
-    pub audio_out_channels: Vec<AudioChannelStreamInfo>,
-
     /// The sample rate of the stream.
     pub sample_rate: u32,
 
@@ -52,30 +40,62 @@ pub struct StreamInfo {
 
 #[derive(Debug, Clone)]
 pub enum AudioDeviceStreamInfo {
-    Single(DeviceID),
-    LinkedInOut { input: Option<DeviceID>, output: Option<DeviceID> },
-}
+    /// Using a single audio device. This device may be output only, input
+    /// only, or (most commonly) duplex.
+    Single {
+        id: DeviceID,
 
-#[derive(Debug, Clone)]
-pub struct AudioChannelStreamInfo {
-    /// The index of the device's channels this channel is connected to.
-    ///
-    /// This is not relevant when the backend is Jack.
-    pub connected_to_index: usize,
+        /// If this is `false` then it means the app failed to connect to
+        /// the system device and is using "fake/virtual" empty buffers
+        /// instead which will only input and output silence.
+        connected_to_system: bool,
+    },
 
-    /// The name of the system port this port is connected to.
-    ///
-    /// This is only relevant when the backend is Jack.
-    pub connected_to_name: Option<String>,
+    /// Using an input/output device pair. This is only supported on some
+    /// backends.
+    LinkedInOut {
+        /// The name/ID of the input device.
+        ///
+        /// If no input device was given in the configuration then this will
+        /// be `None`.
+        input: Option<DeviceID>,
 
-    /// If the system channel was found and is working correctly, this will
-    /// be `true`. Otherwise if the system channel was not found or it is not
-    /// working correctly this will be false.
-    ///
-    /// Note even if this is `false`, the buffer for that channel will still
-    /// be passed to `ProcessInfo`. It will just be filled with silence
-    /// instead and not do anything.
-    pub connected_to_system: bool,
+        /// The name/ID of the input device.
+        ///
+        /// If no output device was given in the configuration then this will
+        /// be `None`.
+        output: Option<DeviceID>,
+
+        /// If this is `false` then it means the app failed to connect to
+        /// the system input device and is using "fake/virtual" empty buffers
+        /// instead which will only input silence.
+        ///
+        /// This is not relevant if no input device was given in the
+        /// configuration (`input` is `None`).
+        in_connected_to_system: bool,
+
+        /// If this is `false` then it means the app failed to connect to
+        /// the system input device and is using "fake/virtual" empty buffers
+        /// instead which will only input silence.
+        ///
+        /// This is not relevant if no input device was given in the
+        /// configuration (`input` is `None`).
+        out_connected_to_system: bool,
+    },
+
+    #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+    /// Using the Jack system audio device.
+    Jack {
+        /// The names of the audio input ports, as well as whether or not
+        /// this port is connected to a system port (`true`), or if it is a
+        /// "virtual" port that is not connected to any system port (`false`).
+        in_ports: Vec<(String, bool)>,
+
+        /// The names of the audio output ports, as well as whether or not
+        /// this port is connected to a system port (`true`), or if it is a
+        /// "virtual" port that is not connected to any system port (`false`).
+        out_ports: Vec<(String, bool)>,
+    },
 }
 
 /// The audio buffer size of a stream.
@@ -101,15 +121,15 @@ pub struct MidiStreamInfo {
     /// The midi backend
     pub midi_backend: Backend,
 
-    /// The names & status of the MIDI input devices.
+    /// The names & status of the MIDI input ports.
     ///
-    /// The buffers presented in the `ProcessInfo::midi_inputs` will
+    /// The buffers presented in the `ProcessInfo::midi_ins` will
     /// appear in this exact same order.
     pub in_ports: Vec<MidiPortStreamInfo>,
 
-    /// The names & status of the MIDI output devices.
+    /// The names & status of the MIDI output ports.
     ///
-    /// The buffers presented in the `ProcessInfo::midi_outputs` will
+    /// The buffers presented in the `ProcessInfo::midi_outs` will
     /// appear in this exact same order.
     pub out_ports: Vec<MidiPortStreamInfo>,
 
@@ -129,12 +149,8 @@ pub struct MidiPortStreamInfo {
     /// The control scheme being used.
     pub control_scheme: MidiControlScheme,
 
-    /// If the system device was found and is working correctly, this will
-    /// be true. Otherwise if the system device was not found or it is not
-    /// working correctly this will be false.
-    ///
-    /// Note even if this is `false`, the MIDI buffer for that port will
-    /// still be passed to `ProcessInfo`. It will just be an empty buffer
-    /// that won't do anything.
+    /// If this is `false` then it means the app failed to connect to
+    /// the port on the system MIDI device and is using "fake/virtual"
+    /// empty buffers instead which will not do anything.
     pub connected_to_system: bool,
 }

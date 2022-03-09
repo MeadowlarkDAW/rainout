@@ -253,7 +253,6 @@ pub enum AudioDeviceOptions {
     JackSystemWideDevice,
 
     #[cfg(feature = "asio")]
-    #[cfg(target_os = "windows")]
     /// A single ASIO device can be selected from this list.
     SingleAsioDevice {
         /// A single ASIO device can be selected from this list.
@@ -300,9 +299,9 @@ pub struct AudioDeviceConfigOptions {
     /// will be `None`.
     pub block_sizes: Option<BlockSizeRange>,
 
-    /// The number of input audio channels available
+    /// The number of input audio channels
     pub num_in_channels: usize,
-    /// The number of output audio channels available
+    /// The number of output audio channels
     pub num_out_channels: usize,
 
     /// The layout of the input audio channels
@@ -321,6 +320,9 @@ pub struct AudioDeviceConfigOptions {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 /// The channel layout of the audio ports
+///
+/// This list is non-exhaustive and more layouts will likely be added in
+/// the future.
 pub enum ChannelLayout {
     /// The device has not specified the channel layout of the audio ports
     Unspecified,
@@ -331,11 +333,9 @@ pub enum ChannelLayout {
     MultiMono,
     /// The device has a single stereo channel
     Stereo,
-    /// The device has multiple stereo channels
+    /// The device has multiple stereo channels (i.e. multiple stereo outputs
+    /// such as an output for speakers and another for headphones)
     MultiStereo,
-    /// The special (but fairly common) case where the device has two stereo
-    /// output channels: one for speakers and one for headphones
-    StereoX2SpeakerHeadphone,
     /// Some other configuration not listed.
     Other(String),
     // TODO: More channel layouts
@@ -370,20 +370,17 @@ pub struct JackAudioDeviceOptions {
     /// The names of the available output ports to select from
     pub out_ports: Vec<String>,
 
-    /// The indexes of the default input ports, along with their channel
-    /// layout.
+    /// The indexes of the default input ports (into the Vec `in_ports`)
     ///
     /// If no default input ports could be found, then this will be `None`.
-    pub default_in_ports: Option<(Vec<usize>, ChannelLayout)>,
-    /// The indexes of the default output ports, along with their channel
-    /// layout.
+    pub default_in_ports: Option<Vec<usize>>,
+    /// The indexes of the default output ports (into the Vec `out_ports`)
     ///
     /// If no default output ports could be found, then this will be `None`.
-    pub default_out_ports: Option<(Vec<usize>, ChannelLayout)>,
+    pub default_out_ports: Option<Vec<usize>>,
 }
 
 #[cfg(feature = "asio")]
-#[cfg(target_os = "windows")]
 #[derive(Debug, Clone)]
 /// Information and configuration options for an ASIO audio device on
 /// Windows
@@ -393,7 +390,7 @@ pub struct AsioAudioDeviceOptions {
 
     /// The path the the executable that launches the settings GUI for
     /// this ASIO device
-    pub settings_application: std::path::PathBuf,
+    pub settings_app: std::path::PathBuf,
 }
 
 #[cfg(feature = "midi")]
@@ -410,10 +407,10 @@ pub struct MidiBackendOptions {
     /// The running status of this backend
     pub status: BackendStatus,
 
-    /// The names of the available input MIDI devices to select from
-    pub in_device_ports: Vec<MidiPortOptions>,
-    /// The names of the available output MIDI devices to select from
-    pub out_device_ports: Vec<MidiPortOptions>,
+    /// The names of the available input MIDI ports to select from
+    pub in_ports: Vec<MidiPortOptions>,
+    /// The names of the available output MIDI ports to select from
+    pub out_ports: Vec<MidiPortOptions>,
 
     /// The index of the default/preferred input MIDI port for the backend
     ///
