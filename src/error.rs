@@ -37,11 +37,14 @@ pub enum RunConfigError {
     AudioBackendNotInstalled(Backend),
     AudioBackendNotRunning(Backend),
     AudioDeviceNotFound(String),
-    AudioPortNotFound(String),
     CouldNotUseSampleRate(u32),
     CouldNotUseBlockSize(u32),
     ConfigHasNoStereoOutput,
     AutoNoStereoOutputFound,
+
+    #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+    JackAudioPortNotFound(String),
+    #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     JackNotEnabledForPlatform,
 
     #[cfg(feature = "midi")]
@@ -75,9 +78,6 @@ impl fmt::Display for RunConfigError {
             RunConfigError::AudioDeviceNotFound(a) => {
                 write!(f, "Failed to run config: The audio device {} was not found", a)
             }
-            RunConfigError::AudioPortNotFound(p) => {
-                write!(f, "Failed to run config: The audio port {} was not found", p)
-            }
             RunConfigError::CouldNotUseSampleRate(s) => {
                 write!(f, "Failed to run config: Could not use the sample rate {}", s)
             }
@@ -90,9 +90,16 @@ impl fmt::Display for RunConfigError {
             RunConfigError::AutoNoStereoOutputFound => {
                 write!(f, "Failed to run config: Could not find an audio device with at-least 2 output ports")
             }
+
+            #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
+            RunConfigError::JackAudioPortNotFound(p) => {
+                write!(f, "Failed to run config: The Jack audio port {} was not found", p)
+            }
+            #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
             RunConfigError::JackNotEnabledForPlatform => {
                 write!(f, "Failed to run config: Jack on this platform is not enabled by this application")
             }
+
             #[cfg(feature = "midi")]
             RunConfigError::MidiBackendNotFound(b) => {
                 write!(f, "Failed to run config: The MIDI backend {:?} was not found", b)
@@ -103,29 +110,6 @@ impl fmt::Display for RunConfigError {
             }
             RunConfigError::PlatformSpecific(e) => {
                 write!(f, "Failed to run config: {}", e)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ChangeAudioChannelsError {
-    NotSupportedByBackend, // TODO: more errors?
-    JackMustUsePortNames,
-    BackendIsNotJack,
-}
-impl Error for ChangeAudioChannelsError {}
-impl fmt::Display for ChangeAudioChannelsError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ChangeAudioChannelsError::NotSupportedByBackend => {
-                write!(f, "Failed to change audio port config: Not supported on this backend")
-            }
-            ChangeAudioChannelsError::JackMustUsePortNames => {
-                write!(f, "Failed to change audio port config: Please us change_jack_audio_port_config() for Jack")
-            }
-            ChangeAudioChannelsError::BackendIsNotJack => {
-                write!(f, "Failed to change audio port config: Please us change_audio_port_config() for non-Jack backends")
             }
         }
     }

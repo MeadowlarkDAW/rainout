@@ -1,6 +1,6 @@
 use crate::error::JackEnumerationError;
 use crate::{
-    AudioBackendOptions, AudioDeviceOptions, Backend, BackendStatus, ChannelLayout, DeviceID,
+    AudioBackendOptions, AudioDeviceOptions, Backend, BackendStatus, DeviceID,
     JackAudioDeviceOptions, MidiBackendOptions, MidiPortOptions,
 };
 
@@ -63,11 +63,8 @@ pub fn enumerate_audio_device() -> Result<JackAudioDeviceOptions, JackEnumeratio
                     break;
                 }
             }
-            let default_in_ports = if !system_audio_in_ports.is_empty() {
-                Some((vec![default_in_port], ChannelLayout::Mono))
-            } else {
-                None
-            };
+            let default_in_ports =
+                if !system_audio_in_ports.is_empty() { Some(vec![default_in_port]) } else { None };
 
             // Find index of default out left port.
             let mut default_out_port_left = 0; // Fallback to first available port.
@@ -89,12 +86,9 @@ pub fn enumerate_audio_device() -> Result<JackAudioDeviceOptions, JackEnumeratio
                 if system_audio_in_ports.len() == 1
                     || default_out_port_left == default_out_port_right
                 {
-                    Some((vec![default_out_port_left], ChannelLayout::Mono))
+                    Some(vec![default_out_port_left])
                 } else {
-                    Some((
-                        vec![default_out_port_left, default_out_port_right],
-                        ChannelLayout::Stereo,
-                    ))
+                    Some(vec![default_out_port_left, default_out_port_right])
                 }
             } else {
                 None
@@ -140,7 +134,7 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
 
     match jack::Client::new(DUMMY_CLIENT_NAME, jack::ClientOptions::empty()) {
         Ok((client, _status)) => {
-            let in_device_ports: Vec<MidiPortOptions> = client
+            let in_ports: Vec<MidiPortOptions> = client
                 .ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_OUTPUT)
                 .drain(..)
                 .map(|n| MidiPortOptions {
@@ -149,7 +143,7 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
                     control_type: MidiControlScheme::Midi1,
                 })
                 .collect();
-            let out_device_ports: Vec<MidiPortOptions> = client
+            let out_ports: Vec<MidiPortOptions> = client
                 .ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_INPUT)
                 .drain(..)
                 .map(|n| MidiPortOptions {
@@ -161,7 +155,7 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
 
             // Find index of the default in port.
             let mut default_in_port = 0; // Fallback to first available port.
-            for (i, device) in in_device_ports.iter().enumerate() {
+            for (i, device) in in_ports.iter().enumerate() {
                 // "system:midi_capture_1" is usually Jack's built-in `Midi-Through` device.
                 // What we usually want is first available port of the user's hardware MIDI controller, which is
                 // commonly mapped to "system:midi_capture_2".
@@ -170,12 +164,11 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
                     break;
                 }
             }
-            let default_in_port =
-                if in_device_ports.is_empty() { None } else { Some(default_in_port) };
+            let default_in_port = if in_ports.is_empty() { None } else { Some(default_in_port) };
 
             // Find index of the default out port.
             let mut default_out_port = 0; // Fallback to first available port.
-            for (i, device) in out_device_ports.iter().enumerate() {
+            for (i, device) in out_ports.iter().enumerate() {
                 // "system:midi_capture_1" is usually Jack's built-in `Midi-Through` device.
                 // What we usually want is first available port of the user's hardware MIDI controller, which is
                 // commonly mapped to "system:midi_playback_2".
@@ -184,15 +177,14 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
                     break;
                 }
             }
-            let default_out_port =
-                if out_device_ports.is_empty() { None } else { Some(default_out_port) };
+            let default_out_port = if out_ports.is_empty() { None } else { Some(default_out_port) };
 
             MidiBackendOptions {
                 backend: Backend::Jack,
                 version: None,
                 status: BackendStatus::Running,
-                in_device_ports,
-                out_device_ports,
+                in_ports,
+                out_ports,
                 default_in_port,
                 default_out_port,
             }
@@ -205,8 +197,8 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
                     backend: Backend::Jack,
                     version: None,
                     status: BackendStatus::NotInstalled,
-                    in_device_ports: Vec::new(),
-                    out_device_ports: Vec::new(),
+                    in_ports: Vec::new(),
+                    out_ports: Vec::new(),
                     default_in_port: None,
                     default_out_port: None,
                 }
@@ -218,8 +210,8 @@ pub fn enumerate_midi_backend() -> MidiBackendOptions {
                     backend: Backend::Jack,
                     version: None,
                     status: BackendStatus::NotRunning,
-                    in_device_ports: Vec::new(),
-                    out_device_ports: Vec::new(),
+                    in_ports: Vec::new(),
+                    out_ports: Vec::new(),
                     default_in_port: None,
                     default_out_port: None,
                 }

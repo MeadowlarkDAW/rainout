@@ -1,4 +1,4 @@
-use crate::error::{ChangeAudioChannelsError, ChangeBlockSizeError, RunConfigError};
+use crate::error::{ChangeBlockSizeError, RunConfigError};
 use crate::{AutoOption, Backend, ProcessInfo, RainoutConfig, StreamInfo, StreamMsg};
 use ringbuf::Consumer;
 
@@ -236,19 +236,6 @@ impl<P: ProcessHandler> StreamHandle<P> {
         self.platform_handle.stream_info()
     }
 
-    /// Change the audio port configuration while the audio thread is still running.
-    /// Support for this will depend on the backend.
-    ///
-    /// If the given config is invalid, an error will be returned with no
-    /// effect on the running audio thread.
-    pub fn change_audio_channels(
-        &mut self,
-        in_channels: Vec<usize>,
-        out_channels: Vec<usize>,
-    ) -> Result<(), ChangeAudioChannelsError> {
-        self.platform_handle.change_audio_channels(in_channels, out_channels)
-    }
-
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// Change the audio port configuration (when using the Jack backend) while the
     /// audio thread is still running.
@@ -258,7 +245,7 @@ impl<P: ProcessHandler> StreamHandle<P> {
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioChannelsError> {
+    ) -> Result<(), ()> {
         self.platform_handle.change_jack_audio_ports(in_port_names, out_port_names)
     }
 
@@ -288,12 +275,6 @@ impl<P: ProcessHandler> StreamHandle<P> {
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
 
-    /// Returns whether or not this backend supports changing the audio channel
-    /// configuration while the audio thread is running.
-    pub fn can_change_audio_channels(&self) -> bool {
-        self.platform_handle.can_change_audio_channels()
-    }
-
     // Returns whether or not this backend supports changing the buffer size
     // configuration while the audio thread is running.
     pub fn can_change_block_size(&self) -> bool {
@@ -313,23 +294,6 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
     /// from the configuration passed into the `run()` method.
     fn stream_info(&self) -> &StreamInfo;
 
-    /// Change the audio port configuration while the audio thread is still running.
-    /// Support for this will depend on the backend.
-    ///
-    /// If the given config is invalid, an error will be returned with no
-    /// effect on the running audio thread.
-    ///
-    /// This will return an error if the current backend is Jack. Please use
-    /// `change_jack_audio_ports()` instead for Jack.
-    #[allow(unused_variables)]
-    fn change_audio_channels(
-        &mut self,
-        in_channels: Vec<usize>,
-        out_channels: Vec<usize>,
-    ) -> Result<(), ChangeAudioChannelsError> {
-        Err(ChangeAudioChannelsError::NotSupportedByBackend)
-    }
-
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     /// Change the audio port configuration (when using the Jack backend) while the
     /// audio thread is still running.
@@ -340,8 +304,8 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioChannelsError> {
-        Err(ChangeAudioChannelsError::BackendIsNotJack)
+    ) -> Result<(), ()> {
+        Err(())
     }
 
     /// Change the buffer/block size configuration while the audio thread is still
@@ -371,12 +335,6 @@ pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
 
     // It may be possible to also add `change_sample_rate_config()` here, but
     // I'm not sure how useful this would actually be.
-
-    /// Returns whether or not this backend supports changing the audio channel
-    /// configuration while the audio thread is running.
-    fn can_change_audio_channels(&self) -> bool {
-        false
-    }
 
     // Returns whether or not this backend supports changing the buffer size
     // configuration while the audio thread is running.

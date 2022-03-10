@@ -1,10 +1,10 @@
 use ringbuf::Producer;
 
-use crate::error::{ChangeAudioChannelsError, ChangeBlockSizeError, RunConfigError};
+use crate::error::{ChangeBlockSizeError, RunConfigError};
 use crate::{
-    AudioBufferStreamInfo, AudioChannelStreamInfo, AudioDeviceStreamInfo, AutoOption, Backend,
-    DeviceID, PlatformStreamHandle, ProcessHandler, RainoutConfig, RunOptions, StreamHandle,
-    StreamInfo, StreamMsg,
+    AudioBufferStreamInfo, AudioDeviceConfig, AudioDeviceStreamInfo, AutoOption, Backend, DeviceID,
+    PlatformStreamHandle, ProcessHandler, RainoutConfig, RunOptions, StreamHandle, StreamInfo,
+    StreamMsg,
 };
 
 #[cfg(feature = "midi")]
@@ -13,9 +13,9 @@ use crate::{
     MidiStreamInfo,
 };
 
-use super::{JackNotificationHandler, JackProcessHandler, DUMMY_CLIENT_NAME, JACK_DEVICE_NAME};
+use super::{JackNotificationHandler, JackProcessHandler, DUMMY_CLIENT_NAME};
 
-const DEFAULT_CLIENT_NAME: &'static str = "rustydaw_io_client";
+const DEFAULT_CLIENT_NAME: &'static str = env!("CARGO_PKG_NAME");
 
 pub fn estimated_sample_rate_and_latency(
     _config: &RainoutConfig,
@@ -50,6 +50,7 @@ pub fn run<P: ProcessHandler>(
 
     let client_name =
         options.use_application_name.clone().unwrap_or(String::from(DEFAULT_CLIENT_NAME));
+    let client_name_path = client_name.clone() + ":";
 
     log::debug!("Registering Jack client with name {}", &client_name);
 
@@ -64,10 +65,11 @@ pub fn run<P: ProcessHandler>(
 
     // --- Register client audio ports --------------------------------------------------------------
 
-    let use_audio_in_ports = match &config.jack_in_ports {
-        AutoOption::Use(ports) => ports.clone(),
-        AutoOption::Auto => {
-            let mut use_ports: Vec<String> = Vec::new();
+    let (use_audio_in_ports, use_audio_out_ports) = match &config.audio_device {
+        AudioDeviceConfig::Jack { in_ports, out_ports } => (in_ports.clone(), out_ports.clone()),
+        _ => {
+            let mut use_in_ports: Vec<String> = Vec::new();
+            let mut use_out_ports: Vec<String> = Vec::new();
 
             if options.auto_audio_inputs {
                 if !system_audio_in_ports.is_empty() {
@@ -80,24 +82,9 @@ pub fn run<P: ProcessHandler>(
                         }
                     }
 
-                    use_ports.push(system_audio_in_ports[default_in_port].clone());
+                    use_in_ports.push(system_audio_in_ports[default_in_port].clone());
                 }
             }
-
-            use_ports
-        }
-    };
-
-    let use_audio_out_ports = match &config.jack_out_ports {
-        AutoOption::Use(ports) => {
-            if options.must_have_stereo_output && ports.len() < 2 {
-                return Err(RunConfigError::ConfigHasNoStereoOutput);
-            }
-
-            ports.clone()
-        }
-        AutoOption::Auto => {
-            let mut use_ports: Vec<String> = Vec::new();
 
             if options.must_have_stereo_output && system_audio_out_ports.len() < 2 {
                 return Err(RunConfigError::AutoNoStereoOutputFound);
@@ -121,17 +108,17 @@ pub fn run<P: ProcessHandler>(
             }
 
             if !system_audio_out_ports.is_empty() {
-                if system_audio_in_ports.len() == 1
+                if system_audio_out_ports.len() == 1
                     || default_out_port_left == default_out_port_right
                 {
-                    use_ports.push(system_audio_in_ports[default_out_port_left].clone());
+                    use_out_ports.push(system_audio_out_ports[default_out_port_left].clone());
                 } else {
-                    use_ports.push(system_audio_in_ports[default_out_port_left].clone());
-                    use_ports.push(system_audio_in_ports[default_out_port_right].clone());
+                    use_out_ports.push(system_audio_out_ports[default_out_port_left].clone());
+                    use_out_ports.push(system_audio_out_ports[default_out_port_right].clone());
                 }
             }
 
-            use_ports
+            (use_in_ports, use_out_ports)
         }
     };
 
@@ -140,69 +127,51 @@ pub fn run<P: ProcessHandler>(
     let mut client_audio_in_port_names = Vec::<String>::with_capacity(use_audio_in_ports.len());
     let mut client_audio_in_connected_to =
         Vec::<Option<String>>::with_capacity(use_audio_in_ports.len());
-    let mut audio_in_channel_info =
-        Vec::<AudioChannelStreamInfo>::with_capacity(use_audio_in_ports.len());
+    let mut audio_in_ports_info = Vec::<(String, bool)>::with_capacity(use_audio_in_ports.len());
 
     let mut client_audio_out_ports =
         Vec::<jack::Port<jack::AudioOut>>::with_capacity(use_audio_out_ports.len());
     let mut client_audio_out_port_names = Vec::<String>::with_capacity(use_audio_out_ports.len());
     let mut client_audio_out_connected_to =
         Vec::<Option<String>>::with_capacity(use_audio_out_ports.len());
-    let mut audio_out_channel_info =
-        Vec::<AudioChannelStreamInfo>::with_capacity(use_audio_out_ports.len());
+    let mut audio_out_ports_info = Vec::<(String, bool)>::with_capacity(use_audio_out_ports.len());
 
     for (i, port) in use_audio_in_ports.iter().enumerate() {
         if !system_audio_in_ports.contains(port) {
             if !options.empty_buffers_for_failed_ports {
-                return Err(RunConfigError::AudioPortNotFound(port.clone()));
+                return Err(RunConfigError::JackAudioPortNotFound(port.clone()));
             }
             client_audio_in_connected_to.push(None);
-            audio_in_channel_info.push(AudioChannelStreamInfo {
-                connected_to_index: 0,
-                connected_to_name: None,
-                connected_to_system: false,
-            });
+            audio_in_ports_info.push((port.clone(), false));
         } else {
             client_audio_in_connected_to.push(Some(port.clone()));
-            audio_in_channel_info.push(AudioChannelStreamInfo {
-                connected_to_index: 0,
-                connected_to_name: Some(port.clone()),
-                connected_to_system: true,
-            });
+            audio_in_ports_info.push((port.clone(), true));
         }
 
         let client_port_name = format!("in_{}", i + 1);
         let client_port = client.register_port(&client_port_name, jack::AudioIn::default())?;
 
         client_audio_in_ports.push(client_port);
-        client_audio_in_port_names.push(client_port_name);
+        client_audio_in_port_names.push(client_name_path.clone() + &client_port_name);
     }
 
     for (i, port) in use_audio_out_ports.iter().enumerate() {
         if !system_audio_out_ports.contains(port) {
             if !options.empty_buffers_for_failed_ports {
-                return Err(RunConfigError::AudioPortNotFound(port.clone()));
+                return Err(RunConfigError::JackAudioPortNotFound(port.clone()));
             }
             client_audio_out_connected_to.push(None);
-            audio_out_channel_info.push(AudioChannelStreamInfo {
-                connected_to_index: 0,
-                connected_to_name: None,
-                connected_to_system: false,
-            });
+            audio_out_ports_info.push((port.clone(), false));
         } else {
             client_audio_out_connected_to.push(Some(port.clone()));
-            audio_out_channel_info.push(AudioChannelStreamInfo {
-                connected_to_index: 0,
-                connected_to_name: Some(port.clone()),
-                connected_to_system: true,
-            });
+            audio_out_ports_info.push((port.clone(), true));
         }
 
         let client_port_name = format!("out_{}", i + 1);
         let client_port = client.register_port(&client_port_name, jack::AudioOut::default())?;
 
         client_audio_out_ports.push(client_port);
-        client_audio_out_port_names.push(client_port_name);
+        client_audio_out_port_names.push(client_name_path.clone() + &client_port_name);
     }
 
     // --- Register client MIDI ports ---------------------------------------------------------------
@@ -239,7 +208,7 @@ pub fn run<P: ProcessHandler>(
                 let system_midi_out_ports: Vec<String> =
                     client.ports(None, Some("8 bit raw midi"), jack::PortFlags::IS_INPUT);
 
-                let use_midi_in_ports = match &midi_config.in_device_ports {
+                let use_midi_in_ports = match &midi_config.in_ports {
                     AutoOption::Use(ports) => ports.clone(),
                     AutoOption::Auto => {
                         let mut use_ports: Vec<MidiPortConfig> = Vec::new();
@@ -271,7 +240,7 @@ pub fn run<P: ProcessHandler>(
                     }
                 };
 
-                let use_midi_out_ports = match &midi_config.out_device_ports {
+                let use_midi_out_ports = match &midi_config.out_ports {
                     AutoOption::Use(ports) => ports.clone(),
                     AutoOption::Auto => {
                         let mut use_ports: Vec<MidiPortConfig> = Vec::new();
@@ -291,7 +260,7 @@ pub fn run<P: ProcessHandler>(
 
                             use_ports.push(MidiPortConfig {
                                 device_id: DeviceID {
-                                    name: system_audio_in_ports[default_out_port].clone(),
+                                    name: system_audio_out_ports[default_out_port].clone(),
                                     identifier: None,
                                 },
                                 port_index: 0,
@@ -350,7 +319,7 @@ pub fn run<P: ProcessHandler>(
                         client.register_port(&client_port_name, jack::MidiIn::default())?;
 
                     client_midi_in_ports.push(client_port);
-                    client_midi_in_port_names.push(client_port_name);
+                    client_midi_in_port_names.push(client_name_path.clone() + &client_port_name);
                 }
 
                 for (i, port_config) in use_midi_out_ports.iter().enumerate() {
@@ -382,7 +351,7 @@ pub fn run<P: ProcessHandler>(
                         client.register_port(&client_port_name, jack::MidiOut::default())?;
 
                     client_midi_out_ports.push(client_port);
-                    client_midi_out_port_names.push(client_port_name);
+                    client_midi_out_port_names.push(client_name_path.clone() + &client_port_name);
                 }
 
                 (
@@ -390,10 +359,10 @@ pub fn run<P: ProcessHandler>(
                     client_midi_out_ports,
                     Some(MidiPortInfo {
                         client_midi_in_port_names,
-                        client_midi_out_connected_to,
+                        client_midi_in_connected_to,
                         midi_in_port_info,
                         client_midi_out_port_names,
-                        client_midi_in_connected_to,
+                        client_midi_out_connected_to,
                         midi_out_port_info,
                     }),
                 )
@@ -424,12 +393,10 @@ pub fn run<P: ProcessHandler>(
     let stream_info = StreamInfo {
         audio_backend: Backend::Jack,
         audio_backend_version: None,
-        audio_device: AudioDeviceStreamInfo::Single(DeviceID {
-            name: JACK_DEVICE_NAME.to_string(),
-            identifier: None,
-        }),
-        audio_in_channels: audio_in_channel_info,
-        audio_out_channels: audio_out_channel_info,
+        audio_device: AudioDeviceStreamInfo::Jack {
+            in_ports: audio_in_ports_info,
+            out_ports: audio_out_ports_info,
+        },
         sample_rate,
         buffer_size: AudioBufferStreamInfo::FixedSized(client.buffer_size() as u32),
         estimated_latency: None,
@@ -478,7 +445,7 @@ pub fn run<P: ProcessHandler>(
                     e
                 );
                 if !options.empty_buffers_for_failed_ports {
-                    return Err(RunConfigError::AudioPortNotFound(in_port.clone()));
+                    return Err(RunConfigError::JackAudioPortNotFound(system_in_port.clone()));
                 }
             }
         }
@@ -492,12 +459,12 @@ pub fn run<P: ProcessHandler>(
             {
                 log::error!(
                     "Failed to connect jack audio ports src({}) dst({}): {}",
-                    out_port,
                     system_out_port,
+                    out_port,
                     e
                 );
                 if !options.empty_buffers_for_failed_ports {
-                    return Err(RunConfigError::AudioPortNotFound(out_port.clone()));
+                    return Err(RunConfigError::JackAudioPortNotFound(system_out_port.clone()));
                 }
             }
         }
@@ -556,7 +523,7 @@ pub fn run<P: ProcessHandler>(
     }
 
     Ok(StreamHandle {
-        platform_handle: Box::new(JackStreamHandle { stream_info }),
+        platform_handle: Box::new(JackStreamHandle { stream_info, async_client }),
         messages: from_audio_thread_rx,
     })
 }
@@ -567,28 +534,21 @@ pub(crate) fn push_stream_msg(to_stream_handle_tx: &mut Producer<StreamMsg>, msg
     }
 }
 
-pub struct JackStreamHandle {
+pub struct JackStreamHandle<P: ProcessHandler> {
     stream_info: StreamInfo,
+    async_client: jack::AsyncClient<JackNotificationHandler, JackProcessHandler<P>>,
 }
 
-impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle {
+impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle<P> {
     fn stream_info(&self) -> &StreamInfo {
         &self.stream_info
-    }
-
-    fn change_audio_channels(
-        &mut self,
-        _audio_in_ports: Vec<usize>,
-        _audio_out_ports: Vec<usize>,
-    ) -> Result<(), ChangeAudioChannelsError> {
-        Err(ChangeAudioChannelsError::JackMustUsePortNames)
     }
 
     fn change_jack_audio_ports(
         &mut self,
         in_port_names: Vec<String>,
         out_port_names: Vec<String>,
-    ) -> Result<(), ChangeAudioChannelsError> {
+    ) -> Result<(), ()> {
         todo!()
     }
 
@@ -603,10 +563,6 @@ impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle {
         out_devices: Vec<MidiPortConfig>,
     ) -> Result<(), ChangeMidiPortsError> {
         todo!()
-    }
-
-    fn can_change_audio_channels(&self) -> bool {
-        true
     }
 
     fn can_change_block_size(&self) -> bool {

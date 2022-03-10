@@ -10,4 +10,3 @@ pub use enumeration::*;
 pub use run::*;
 
 const DUMMY_CLIENT_NAME: &'static str = "rainout_dummy_client";
-const JACK_DEVICE_NAME: &'static str = "Jack System Device";
