@@ -103,13 +103,17 @@ pub enum AudioDeviceStreamInfo {
 pub enum AudioBufferStreamInfo {
     FixedSized(u32),
     UnfixedWithMaxSize(u32),
+    UnfixedWithMinSize(u32),
+    Unfixed,
 }
 
 impl AudioBufferStreamInfo {
-    pub fn max_buffer_size(&self) -> u32 {
+    pub fn max_buffer_size(&self) -> Option<u32> {
         match self {
-            Self::FixedSized(s) => *s,
-            Self::UnfixedWithMaxSize(s) => *s,
+            Self::FixedSized(s) => Some(*s),
+            Self::UnfixedWithMaxSize(s) => Some(*s),
+            Self::UnfixedWithMinSize(_) => None,
+            Self::Unfixed => None,
         }
     }
 }

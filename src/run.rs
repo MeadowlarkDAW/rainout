@@ -209,6 +209,10 @@ pub fn run<P: ProcessHandler>(
                     return Err(RunConfigError::JackNotEnabledForPlatform);
                 }
             }
+            #[cfg(target_os = "windows")]
+            Backend::Wasapi => {
+                return crate::wasapi_backend::run(config, options, process_handler);
+            }
             b => {
                 log::error!("Unknown audio backend: {:?}", b);
                 return Err(RunConfigError::AudioBackendNotFound(b));
@@ -219,7 +223,7 @@ pub fn run<P: ProcessHandler>(
 
 /// The handle to a running audio/midi stream.
 ///
-// When this gets dropped, the stream (audio thread) will automatically stop. This
+/// When this gets dropped, the stream (audio thread) will automatically stop. This
 /// is the intended method for stopping a stream.
 pub struct StreamHandle<P: ProcessHandler> {
     /// The message channel that receives notifications from the audio thread

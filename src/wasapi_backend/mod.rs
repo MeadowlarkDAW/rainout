@@ -3,9 +3,9 @@ use std::error::Error;
 use wasapi::{initialize_sta, DeviceCollection, Direction};
 
 use crate::{
-    error::RunConfigError, AudioBackendOptions, AudioDeviceConfigOptions, AudioDeviceOptions,
-    BackendStatus, ChannelLayout, DeviceID, ProcessHandler, RainoutConfig, RunOptions,
-    StreamHandle, Backend,
+    error::RunConfigError, AudioBackendOptions, AudioBufferStreamInfo, AudioDeviceConfigOptions,
+    AudioDeviceOptions, AudioDeviceStreamInfo, Backend, BackendStatus, ChannelLayout, DeviceID,
+    ProcessHandler, RainoutConfig, RunOptions, StreamHandle, StreamInfo,
 };
 
 // From the wasapi crate
@@ -56,10 +56,7 @@ pub fn enumerate_audio_backend() -> Result<AudioBackendOptions, ()> {
     })
 }
 
-pub fn enumerate_audio_device(
-    backend: &str,
-    device: &DeviceID,
-) -> Result<AudioDeviceConfigOptions, ()> {
+pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOptions, ()> {
     Ok(AudioDeviceConfigOptions {
         // WASAPI supports more, but figuring out which is trial-and-
         // error. For now we'll just advertise 44.1k, but we should
@@ -86,10 +83,68 @@ pub fn enumerate_audio_device(
     })
 }
 
+fn get_default_device(direction: &Direction) -> Result<DeviceID, ()> {
+    let device = convert_result(wasapi::get_default_device(direction))?;
+
+    Ok(DeviceID {
+        name: convert_result(device.get_friendlyname())?,
+        identifier: Some(convert_result(device.get_id())?),
+    })
+}
+
 pub fn run<P: ProcessHandler>(
     config: &RainoutConfig,
     options: &RunOptions,
-    process_handler: P,
+    mut process_handler: P,
 ) -> Result<StreamHandle<P>, RunConfigError> {
-    todo!()
+    println!("{:#?}", config);
+    println!("{:#?}", options);
+
+    let audio_device = match &config.audio_device {
+        crate::AudioDeviceConfig::Single(device) => {
+            AudioDeviceStreamInfo::Single { id: device.clone(), connected_to_system: false }
+        }
+        crate::AudioDeviceConfig::LinkedInOut { input, output } => {
+            AudioDeviceStreamInfo::LinkedInOut {
+                input: input.clone(),
+                output: output.clone(),
+                in_connected_to_system: false,
+                out_connected_to_system: false,
+            }
+        }
+        crate::AudioDeviceConfig::Jack { in_ports: _, out_ports: _ } => {
+            return Err(RunConfigError::MalformedConfig(
+                "WASAPI does not support JACK devices".to_string(),
+            ));
+        }
+        crate::AudioDeviceConfig::Auto => AudioDeviceStreamInfo::LinkedInOut {
+            input: get_default_device(&Direction::Capture).ok(),
+            output: get_default_device(&Direction::Render).ok(),
+            in_connected_to_system: false, // Not sure what these mean so ignoring them for now
+            out_connected_to_system: false,
+        },
+    };
+
+    let stream_info = StreamInfo {
+        audio_backend: Backend::Wasapi,
+        audio_backend_version: None,
+        audio_device,
+        sample_rate: match config.sample_rate {
+            crate::AutoOption::Use(sample_rate) => sample_rate,
+            crate::AutoOption::Auto => 44100,
+        },
+        buffer_size: match config.block_size {
+            crate::AutoOption::Use(block_size) => {
+                AudioBufferStreamInfo::UnfixedWithMinSize(block_size)
+            }
+            crate::AutoOption::Auto => AudioBufferStreamInfo::Unfixed,
+        },
+        estimated_latency: None,           // TODO: no idea
+        checking_for_silent_inputs: false, // TODO: ??
+        midi_info: None,
+    };
+
+    process_handler.init(&stream_info);
+
+    todo!();
 }

@@ -42,6 +42,8 @@ pub enum RunConfigError {
     ConfigHasNoStereoOutput,
     AutoNoStereoOutputFound,
 
+    MalformedConfig(String),
+
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     JackAudioPortNotFound(String),
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -89,6 +91,10 @@ impl fmt::Display for RunConfigError {
             }
             RunConfigError::AutoNoStereoOutputFound => {
                 write!(f, "Failed to run config: Could not find an audio device with at-least 2 output ports")
+            }
+
+            RunConfigError::MalformedConfig(s) => {
+                write!(f, "Failed to run config: Config was malformed. {}", s)
             }
 
             #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]

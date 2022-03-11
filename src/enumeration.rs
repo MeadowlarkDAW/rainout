@@ -110,6 +110,10 @@ pub fn enumerate_audio_device(
 
             Err(())
         }
+        #[cfg(target_os = "windows")]
+        Backend::Wasapi => {
+            wasapi_backend::enumerate_audio_device(device)
+        }
         b => {
             log::error!("Unknown audio backend: {:?}", b);
             Err(())
