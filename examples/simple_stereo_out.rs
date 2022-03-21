@@ -1,7 +1,7 @@
 use rainout::{ProcessHandler, ProcessInfo, RainoutConfig, RunOptions, StreamInfo};
 
 pub fn main() {
-    simple_logger::SimpleLogger::new().init().unwrap();
+    simple_logger::SimpleLogger::new().with_level(log::LevelFilter::Debug).init().unwrap();
 
     let my_processor = MyAudioProcessor { phase: 0.0, pitch: 440.0, gain: 0.5, step: 0.0 };
 
@@ -48,8 +48,8 @@ impl ProcessHandler for MyAudioProcessor {
             return;
         }
 
-        // Hints to the compiler to elid bounds checking. You may also use unsafe
-        // here since it is gauranteed that the size of each buffer is the size
+        // Hints to the compiler to elide bounds checking. You may also use unsafe
+        // here since it is guaranteed that the size of each buffer is the size
         // `proc_info.frames`.
         let frames = proc_info
             .frames
@@ -57,7 +57,7 @@ impl ProcessHandler for MyAudioProcessor {
             .min(proc_info.audio_outputs[1].len());
 
         for i in 0..frames {
-            // generate rudamentary sine wave
+            // generate rudimentary sine wave
             let smp = self.phase.sin() * self.gain;
             self.phase += self.step;
             if self.phase >= std::f32::consts::PI * 2.0 {

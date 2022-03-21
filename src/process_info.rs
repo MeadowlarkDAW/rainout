@@ -11,8 +11,8 @@ pub struct ProcessInfo<'a> {
 
     /// The number of audio frames in this process cycle.
     ///
-    /// It is gauranteed that every buffer in `audio_inputs` and
-    /// `audio_outputs` will have a length of at-least this size.
+    /// It is guaranteed that every buffer in `audio_inputs` and
+    /// `audio_outputs` will have a length of at least this size.
     pub frames: usize,
 
     /// For each audio input buffer in order, this will return true
