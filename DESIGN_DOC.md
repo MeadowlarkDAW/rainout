@@ -581,6 +581,12 @@ pub struct RunOptions {
     /// By default this is set to `false`.
     pub empty_buffers_for_failed_ports: bool,
 
+    /// If the audio backend does not support fixed buffer sizes, use this as
+    /// the maximum size of the audio buffers passed to the process method.
+    ///
+    /// By default this is set to `1024`.
+    pub max_buffer_size: usize,
+
     /// The size of the audio thread to stream handle message buffer.
     ///
     /// By default this is set to `512`.
