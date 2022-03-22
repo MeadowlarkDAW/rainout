@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::Backend;
+use crate::{Backend, DeviceID};
 
 #[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
@@ -11,6 +11,7 @@ use crate::MAX_MIDI_MSG_SIZE;
 pub enum StreamError {
     AudioServerShutdown { msg: Option<String> },
     AudioServerChangedSamplerate(u32),
+    PlatformSpecific(Box<dyn Error>),
     // TODO
 }
 impl Error for StreamError {}
@@ -27,16 +28,21 @@ impl fmt::Display for StreamError {
             StreamError::AudioServerChangedSamplerate(sr) => {
                 write!(f, "Fatal stream error: the audio server changed its sample rate to: {}", sr)
             }
+            StreamError::PlatformSpecific(e) => {
+                write!(f, "Fatal stream error: {}", e)
+            }
         }
     }
 }
 
 #[derive(Debug)]
 pub enum RunConfigError {
+    MalformedConfig(String),
+
     AudioBackendNotFound(Backend),
     AudioBackendNotInstalled(Backend),
     AudioBackendNotRunning(Backend),
-    AudioDeviceNotFound(String),
+    AudioDeviceNotFound(DeviceID),
     CouldNotUseSampleRate(u32),
     CouldNotUseBlockSize(u32),
     ConfigHasNoStereoOutput,
@@ -50,7 +56,7 @@ pub enum RunConfigError {
     #[cfg(feature = "midi")]
     MidiBackendNotFound(Backend),
     #[cfg(feature = "midi")]
-    MidiDeviceNotFound(String),
+    MidiDeviceNotFound(DeviceID),
 
     PlatformSpecific(Box<dyn Error>),
 }
@@ -58,6 +64,9 @@ impl Error for RunConfigError {}
 impl fmt::Display for RunConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            RunConfigError::MalformedConfig(msg) => {
+                write!(f, "Failed to run config: Malformed config: {}", msg)
+            }
             RunConfigError::AudioBackendNotFound(b) => {
                 write!(f, "Failed to run config: The audio backend {:?} was not found", b)
             }
@@ -89,6 +98,10 @@ impl fmt::Display for RunConfigError {
             }
             RunConfigError::AutoNoStereoOutputFound => {
                 write!(f, "Failed to run config: Could not find an audio device with at-least 2 output ports")
+            }
+
+            RunConfigError::CouldNotUseExclusive => {
+                write!(f, "Failed to run config: Could not run audio device in exclusive mode")
             }
 
             #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]

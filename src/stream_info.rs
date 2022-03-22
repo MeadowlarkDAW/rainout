@@ -1,4 +1,4 @@
-use crate::{Backend, DeviceID};
+use crate::{Backend, ChannelLayout, DeviceID};
 
 #[cfg(feature = "midi")]
 use crate::MidiControlScheme;
@@ -22,6 +22,20 @@ pub struct StreamInfo {
 
     /// The audio buffer size.
     pub buffer_size: AudioBufferStreamInfo,
+
+    /// The number of audio input channels that will be passed into the
+    /// process method.
+    pub num_in_channels: usize,
+
+    /// The number of audio output channels that will be passed into the
+    /// process method.
+    pub num_out_channels: usize,
+
+    /// The layout of the audio input channels.
+    pub in_channel_layout: ChannelLayout,
+
+    /// The layout of the audio output channels.
+    pub out_channel_layout: ChannelLayout,
 
     /// The total estimated latency of this stream in frames (if it is available)
     pub estimated_latency: Option<u32>,
