@@ -25,11 +25,11 @@ pub struct StreamInfo {
 
     /// The number of audio input channels that will be passed into the
     /// process method.
-    pub num_in_channels: usize,
+    pub num_in_channels: u32,
 
     /// The number of audio output channels that will be passed into the
     /// process method.
-    pub num_out_channels: usize,
+    pub num_out_channels: u32,
 
     /// The layout of the audio input channels.
     pub in_channel_layout: ChannelLayout,

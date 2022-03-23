@@ -1,7 +1,7 @@
 use rainout::{ProcessHandler, ProcessInfo, RainoutConfig, RunOptions, StreamInfo};
 
 pub fn main() {
-    simple_logger::SimpleLogger::new().init().unwrap();
+    simple_logger::SimpleLogger::new().with_level(log::LevelFilter::Debug).init().unwrap();
 
     let my_processor = MyAudioProcessor { phase: 0.0, pitch: 440.0, gain: 0.5, step: 0.0 };
 

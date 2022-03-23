@@ -1,15 +1,5 @@
 use crate::Backend;
 
-#[cfg(all(target_os = "linux", feature = "jack-linux"))]
-use crate::jack_backend;
-#[cfg(all(target_os = "macos", feature = "jack-macos"))]
-use crate::jack_backend;
-#[cfg(all(target_os = "windows", feature = "jack-windows"))]
-use crate::jack_backend;
-
-#[cfg(target_os = "windows")]
-use crate::wasapi_backend;
-
 /// Returns the list available audio backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
@@ -51,7 +41,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
     match backend {
         Backend::Jack => {
             #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            return Ok(jack_backend::enumerate_audio_backend());
+            return Ok(crate::jack_backend::enumerate_audio_backend());
             #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
             {
                 log::error!("The feature \"jack-linux\" is not enabled");
@@ -59,7 +49,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
             }
 
             #[cfg(all(target_os = "macos", feature = "jack-macos"))]
-            return Ok(jack_backend::enumerate_audio_backend());
+            return Ok(crate::jack_backend::enumerate_audio_backend());
             #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
             {
                 log::error!("The feature \"jack-macos\" is not enabled");
@@ -67,7 +57,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
             }
 
             #[cfg(all(target_os = "windows", feature = "jack-windows"))]
-            return Ok(jack_backend::enumerate_audio_backend());
+            return Ok(crate::jack_backend::enumerate_audio_backend());
             #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
             {
                 log::error!("The feature \"jack-windows\" is not enabled");
@@ -76,7 +66,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
         }
         Backend::Wasapi => {
             #[cfg(target_os = "windows")]
-            return Ok(wasapi_backend::enumerate_audio_backend());
+            return Ok(crate::wasapi_backend::enumerate_audio_backend());
 
             #[cfg(not(target_os = "windows"))]
             {
@@ -121,7 +111,7 @@ pub fn enumerate_audio_device(
         }
         Backend::Wasapi => {
             #[cfg(target_os = "windows")]
-            return wasapi_backend::enumerate_audio_device(device);
+            return crate::wasapi_backend::enumerate_audio_device(device);
 
             #[cfg(not(target_os = "windows"))]
             {
@@ -145,7 +135,7 @@ pub fn enumerate_audio_device(
 pub fn enumerate_jack_audio_device(
 ) -> Result<JackAudioDeviceOptions, crate::error::JackEnumerationError> {
     #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-    return jack_backend::enumerate_audio_device();
+    return crate::jack_backend::enumerate_audio_device();
     #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
     {
         log::error!("The feature \"jack-linux\" is not enabled");
@@ -153,7 +143,7 @@ pub fn enumerate_jack_audio_device(
     }
 
     #[cfg(all(target_os = "macos", feature = "jack-macos"))]
-    return jack_backend::enumerate_audio_device();
+    return crate::jack_backend::enumerate_audio_device();
     #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
     {
         log::error!("The feature \"jack-macos\" is not enabled");
@@ -161,7 +151,7 @@ pub fn enumerate_jack_audio_device(
     }
 
     #[cfg(all(target_os = "windows", feature = "jack-windows"))]
-    return jack_backend::enumerate_audio_device();
+    return crate::jack_backend::enumerate_audio_device();
     #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
     {
         log::error!("The feature \"jack-windows\" is not enabled");
@@ -187,7 +177,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
     match backend {
         Backend::Jack => {
             #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            return Ok(jack_backend::enumerate_midi_backend());
+            return Ok(crate::jack_backend::enumerate_midi_backend());
             #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
             {
                 log::error!("The feature \"jack-linux\" is not enabled");
@@ -195,7 +185,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
             }
 
             #[cfg(all(target_os = "macos", feature = "jack-macos"))]
-            return Ok(jack_backend::enumerate_midi_backend());
+            return Ok(crate::jack_backend::enumerate_midi_backend());
             #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
             {
                 log::error!("The feature \"jack-macos\" is not enabled");
@@ -203,7 +193,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
             }
 
             #[cfg(all(target_os = "windows", feature = "jack-windows"))]
-            return Ok(jack_backend::enumerate_midi_backend());
+            return Ok(crate::jack_backend::enumerate_midi_backend());
             #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
             {
                 log::error!("The feature \"jack-windows\" is not enabled");

@@ -17,13 +17,13 @@ bitflags! {
 }
 
 use crate::{
-    AudioBackendOptions, AudioDeviceOptions, Backend, BackendStatus, BlockSizeRange, ChannelLayout,
-    DeviceID,
+    AudioBackendOptions, AudioDeviceConfigOptions, AudioDeviceOptions, Backend, BackendStatus,
+    BlockSizeRange, ChannelLayout, DeviceID,
 };
 
 pub(super) fn check_init() {
     // Initialize this only once.
-    INIT.call_once(|| initialize_mta().unwrap());
+    INIT.call_once(|| wasapi::initialize_mta().unwrap());
 }
 
 pub fn enumerate_audio_backend() -> AudioBackendOptions {
@@ -57,6 +57,8 @@ pub fn enumerate_audio_backend() -> AudioBackendOptions {
         }
     };
 
+    let mut device_options: Vec<DeviceID> = Vec::new();
+
     for i in 0..num_devices {
         match coll.get_device_at_index(i) {
             Ok(device) => {
@@ -76,7 +78,7 @@ pub fn enumerate_audio_backend() -> AudioBackendOptions {
 
                         match device.get_state() {
                             Ok(state) => {
-                                match DeviceState::from_bits(bits) {
+                                match DeviceState::from_bits(state) {
                                     Some(state) => {
                                         // What a weird API of using bit flags for each of the different
                                         // states the device can be in.
@@ -106,7 +108,7 @@ pub fn enumerate_audio_backend() -> AudioBackendOptions {
                             Err(e) => {
                                 log::error!(
                                     "Failed to get state of WASAPI device {}: {}",
-                                    &name,
+                                    &device_name,
                                     e
                                 );
                             }
@@ -123,7 +125,7 @@ pub fn enumerate_audio_backend() -> AudioBackendOptions {
         }
     }
 
-    if device_opts.is_empty() {
+    if device_options.is_empty() {
         AudioBackendOptions {
             backend: Backend::Wasapi,
             version: None,
@@ -135,7 +137,7 @@ pub fn enumerate_audio_backend() -> AudioBackendOptions {
             backend: Backend::Wasapi,
             version: None,
             status: BackendStatus::Running,
-            device_options: Some(AudioDeviceOptions::SingleDeviceOnly { options: device_opts }),
+            device_options: Some(AudioDeviceOptions::SingleDeviceOnly { options: device_options }),
         }
     }
 }
@@ -146,7 +148,7 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
     check_init();
 
     let (id, wdevice, jack_unpopulated) = match find_device(device) {
-        Ok((id, device, jack_unpopulated)) => (id, device, jack_unpopulated),
+        Some((id, device, jack_unpopulated)) => (id, device, jack_unpopulated),
         None => return Err(()),
     };
 
@@ -169,18 +171,18 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
 
     // We only care about channels and sample rate, and not the sample type.
     // We will always convert to/from `f32` buffers  anyway.
-    let default_sample_type = match default_format.get_subformat(&self) {
+    let default_sample_type = match default_format.get_subformat() {
         Ok(s) => s,
         Err(e) => {
             log::error!("Failed to get default wave format of WASAPI device {}: {}", &id.name, e);
             return Err(());
         }
     };
-    let default_bps = default_format.bitspersample();
-    let default_vbps = default_format.validbitspersample();
-    let default_sample_rate = default_format.samplespersec();
+    let default_bps = default_format.get_bitspersample();
+    let default_vbps = default_format.get_validbitspersample();
+    let default_sample_rate = default_format.get_samplespersec();
     let default_num_channels = default_format.get_nchannels();
-    let default_buffer_size = match default_format.get_bufferframecount() {
+    let default_buffer_size = match audio_client.get_bufferframecount() {
         Ok(b) => Some(BlockSizeRange { min: b, max: b, default: b }),
         Err(e) => {
             log::debug!("Could not get default buffer size of WASAPI device {}: {}", &id.name, e);
@@ -194,11 +196,11 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
     // Check if this device supports running in exclusive mode.
     let supports_exclusive = match audio_client.is_supported(
         &wasapi::WaveFormat::new(
-            default_bps,
-            default_vbps,
+            default_bps as usize,
+            default_vbps as usize,
             &default_sample_type,
-            default_sample_rate,
-            default_num_channels,
+            default_sample_rate as usize,
+            default_num_channels as usize,
         ),
         &wasapi::ShareMode::Exclusive,
     ) {
@@ -217,11 +219,11 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
         for sr in sample_rates.iter() {
             match audio_client.is_supported(
                 &wasapi::WaveFormat::new(
-                    default_bps,
-                    default_vbps,
+                    default_bps as usize,
+                    default_vbps as usize,
                     &default_sample_type,
-                    sr as usize,
-                    default_num_channels,
+                    *sr as usize,
+                    default_num_channels as usize,
                 ),
                 &wasapi::ShareMode::Exclusive,
             ) {
@@ -240,7 +242,7 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
             block_sizes: default_buffer_size,
 
             num_in_channels: 0,
-            num_out_channels: default_num_channels,
+            num_out_channels: default_num_channels as usize,
 
             in_channel_layout: ChannelLayout::Unspecified,
             out_channel_layout: channel_layout,
@@ -258,7 +260,7 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
             block_sizes: default_buffer_size,
 
             num_in_channels: 0,
-            num_out_channels: default_num_channels,
+            num_out_channels: default_num_channels as usize,
 
             in_channel_layout: ChannelLayout::Unspecified,
             out_channel_layout: channel_layout,
@@ -295,7 +297,7 @@ pub(super) fn find_device(device: &DeviceID) -> Option<(DeviceID, wasapi::Device
             Ok(d) => {
                 match d.get_id() {
                     Ok(device_id) => {
-                        let device_name = match device.get_friendlyname() {
+                        let device_name = match d.get_friendlyname() {
                             Ok(name) => name,
                             Err(e) => {
                                 log::warn!(
@@ -307,9 +309,9 @@ pub(super) fn find_device(device: &DeviceID) -> Option<(DeviceID, wasapi::Device
                             }
                         };
 
-                        match device.get_state() {
+                        match d.get_state() {
                             Ok(state) => {
-                                match DeviceState::from_bits(bits) {
+                                match DeviceState::from_bits(state) {
                                     Some(state) => {
                                         // What a weird API of using bit flags for each of the different
                                         // states the device can be in.
@@ -326,7 +328,7 @@ pub(super) fn find_device(device: &DeviceID) -> Option<(DeviceID, wasapi::Device
                                                 identifier: Some(device_id),
                                             };
 
-                                            if id == device {
+                                            if &id == device {
                                                 let jack_unpopulated =
                                                     state.contains(DeviceState::UNPLUGGED);
 
@@ -346,7 +348,7 @@ pub(super) fn find_device(device: &DeviceID) -> Option<(DeviceID, wasapi::Device
                             Err(e) => {
                                 log::error!(
                                     "Failed to get state of WASAPI device {}: {}",
-                                    &name,
+                                    &device_name,
                                     e
                                 );
                             }

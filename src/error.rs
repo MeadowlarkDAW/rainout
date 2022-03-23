@@ -6,12 +6,12 @@ use crate::{Backend, DeviceID};
 #[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// An error that caused the stream to stop.
 pub enum StreamError {
     AudioServerShutdown { msg: Option<String> },
     AudioServerChangedSamplerate(u32),
-    PlatformSpecific(Box<dyn Error>),
+    PlatformSpecific(String),
     // TODO
 }
 impl Error for StreamError {}
@@ -47,6 +47,7 @@ pub enum RunConfigError {
     CouldNotUseBlockSize(u32),
     ConfigHasNoStereoOutput,
     AutoNoStereoOutputFound,
+    CouldNotUseExclusive,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     JackAudioPortNotFound(String),
@@ -58,7 +59,8 @@ pub enum RunConfigError {
     #[cfg(feature = "midi")]
     MidiDeviceNotFound(DeviceID),
 
-    PlatformSpecific(Box<dyn Error>),
+    PlatformSpecific(String),
+    TimedOut,
 }
 impl Error for RunConfigError {}
 impl fmt::Display for RunConfigError {
@@ -85,7 +87,7 @@ impl fmt::Display for RunConfigError {
                 )
             }
             RunConfigError::AudioDeviceNotFound(a) => {
-                write!(f, "Failed to run config: The audio device {} was not found", a)
+                write!(f, "Failed to run config: The audio device {:?} was not found", a)
             }
             RunConfigError::CouldNotUseSampleRate(s) => {
                 write!(f, "Failed to run config: Could not use the sample rate {}", s)
@@ -119,10 +121,13 @@ impl fmt::Display for RunConfigError {
             }
             #[cfg(feature = "midi")]
             RunConfigError::MidiDeviceNotFound(m) => {
-                write!(f, "Failed to run config: The midi device {} was not found", m)
+                write!(f, "Failed to run config: The midi device {:?} was not found", m)
             }
             RunConfigError::PlatformSpecific(e) => {
                 write!(f, "Failed to run config: {}", e)
+            }
+            RunConfigError::TimedOut => {
+                write!(f, "Failed to run config: Timed out while attempting to spawn audio stream")
             }
         }
     }

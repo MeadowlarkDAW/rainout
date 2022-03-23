@@ -67,7 +67,12 @@ pub fn estimated_sample_rate_and_latency(
             }
         }
         Backend::Wasapi => {
-            todo!()
+            #[cfg(target_os = "windows")]
+            return crate::wasapi_backend::estimated_sample_rate_and_latency(config);
+            #[cfg(not(target_os = "windows"))]
+            return Err(RunConfigError::MalformedConfig(String::from(
+                "The backend WASAPI is not supported on this platform",
+            )));
         }
         b => {
             log::error!("Unkown audio backend: {:?}", b);
@@ -141,7 +146,7 @@ pub struct RunOptions {
     /// the maximum size of the audio buffers passed to the process method.
     ///
     /// By default this is set to `1024`.
-    pub max_buffer_size: usize,
+    pub max_buffer_size: u32,
 
     /// The size of the audio thread to stream handle message buffer.
     ///
@@ -228,6 +233,14 @@ pub fn run<P: ProcessHandler>(
                     return Err(RunConfigError::JackNotEnabledForPlatform);
                 }
             }
+            Backend::Wasapi => {
+                #[cfg(target_os = "windows")]
+                return crate::wasapi_backend::run(config, options, process_handler);
+                #[cfg(not(target_os = "windows"))]
+                return Err(RunConfigError::MalformedConfig(String::from(
+                    "The backend WASAPI is not supported on this platform",
+                )));
+            }
             b => {
                 log::error!("Unkown audio backend: {:?}", b);
                 return Err(RunConfigError::AudioBackendNotFound(b));
@@ -308,7 +321,7 @@ impl<P: ProcessHandler> StreamHandle<P> {
     }
 }
 
-pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
+pub(crate) trait PlatformStreamHandle<P: ProcessHandler>: Send {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
     fn stream_info(&self) -> &StreamInfo;
