@@ -5,6 +5,26 @@ use ringbuf::Consumer;
 #[cfg(feature = "midi")]
 use crate::{error::ChangeMidiPortsError, MidiPortConfig};
 
+fn auto_audio_backend() -> Backend {
+    #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+    return Backend::Jack;
+
+    #[cfg(all(target_os = "windows", not(feature = "asio")))]
+    return Backend::Wasapi;
+
+    #[cfg(all(target_os = "windows", feature = "asio"))]
+    return Backend::Asio;
+}
+
+#[cfg(feature = "midi")]
+fn auto_midi_backend() -> Backend {
+    #[cfg(all(target_os = "linux", feature = "jack-linux"))]
+    return Backend::Jack;
+
+    #[cfg(target_os = "windows")]
+    return Backend::Wasapi;
+}
+
 /// Get the estimated sample rate and total latency of a particular configuration
 /// before running it.
 ///
@@ -17,11 +37,7 @@ pub fn estimated_sample_rate_and_latency(
 ) -> Result<(Option<u32>, Option<u32>), RunConfigError> {
     let use_audio_backend = match config.audio_backend {
         AutoOption::Use(b) => b,
-        AutoOption::Auto =>
-        {
-            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            Backend::Jack
-        }
+        AutoOption::Auto => auto_audio_backend(),
     };
 
     match use_audio_backend {
@@ -49,6 +65,14 @@ pub fn estimated_sample_rate_and_latency(
                 log::error!("The feature \"jack-windows\" is not enabled");
                 return Err(RunConfigError::JackNotEnabledForPlatform);
             }
+        }
+        Backend::Wasapi => {
+            #[cfg(target_os = "windows")]
+            return crate::wasapi_backend::estimated_sample_rate_and_latency(config);
+            #[cfg(not(target_os = "windows"))]
+            return Err(RunConfigError::MalformedConfig(String::from(
+                "The backend WASAPI is not supported on this platform",
+            )));
         }
         b => {
             log::error!("Unkown audio backend: {:?}", b);
@@ -122,7 +146,7 @@ pub struct RunOptions {
     /// the maximum size of the audio buffers passed to the process method.
     ///
     /// By default this is set to `1024`.
-    pub max_buffer_size: usize,
+    pub max_buffer_size: u32,
 
     /// The size of the audio thread to stream handle message buffer.
     ///
@@ -163,23 +187,13 @@ pub fn run<P: ProcessHandler>(
     options: &RunOptions,
     process_handler: P,
 ) -> Result<StreamHandle<P>, RunConfigError> {
-    let use_audio_backend = match config.audio_backend {
-        AutoOption::Use(b) => b,
-        AutoOption::Auto =>
-        {
-            #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            Backend::Jack
-        }
-    };
+    let use_audio_backend = auto_audio_backend();
 
+    #[cfg(feature = "midi")]
     let use_midi_backend = match &config.midi_config {
         Some(midi_config) => match midi_config.midi_backend {
             AutoOption::Use(b) => Some(b),
-            AutoOption::Auto =>
-            {
-                #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-                Some(Backend::Jack)
-            }
+            AutoOption::Auto => Some(auto_midi_backend()),
         },
         None => None,
     };
@@ -218,6 +232,14 @@ pub fn run<P: ProcessHandler>(
                     log::error!("The feature \"jack-windows\" is not enabled");
                     return Err(RunConfigError::JackNotEnabledForPlatform);
                 }
+            }
+            Backend::Wasapi => {
+                #[cfg(target_os = "windows")]
+                return crate::wasapi_backend::run(config, options, process_handler);
+                #[cfg(not(target_os = "windows"))]
+                return Err(RunConfigError::MalformedConfig(String::from(
+                    "The backend WASAPI is not supported on this platform",
+                )));
             }
             b => {
                 log::error!("Unkown audio backend: {:?}", b);
@@ -299,7 +321,7 @@ impl<P: ProcessHandler> StreamHandle<P> {
     }
 }
 
-pub(crate) trait PlatformStreamHandle<P: ProcessHandler> {
+pub(crate) trait PlatformStreamHandle<P: ProcessHandler>: Send {
     /// Returns the actual configuration of the running stream. This may differ
     /// from the configuration passed into the `run()` method.
     fn stream_info(&self) -> &StreamInfo;

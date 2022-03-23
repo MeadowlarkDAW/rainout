@@ -2,9 +2,9 @@ use ringbuf::Producer;
 
 use crate::error::{ChangeBlockSizeError, RunConfigError};
 use crate::{
-    AudioBufferStreamInfo, AudioDeviceConfig, AudioDeviceStreamInfo, AutoOption, Backend, DeviceID,
-    PlatformStreamHandle, ProcessHandler, RainoutConfig, RunOptions, StreamHandle, StreamInfo,
-    StreamMsg,
+    AudioBufferStreamInfo, AudioDeviceConfig, AudioDeviceStreamInfo, AutoOption, Backend,
+    ChannelLayout, DeviceID, PlatformStreamHandle, ProcessHandler, RainoutConfig, RunOptions,
+    StreamHandle, StreamInfo, StreamMsg,
 };
 
 #[cfg(feature = "midi")]
@@ -294,7 +294,7 @@ pub fn run<P: ProcessHandler>(
                     if !system_midi_in_ports.contains(&port_config.device_id.name) {
                         if !options.empty_buffers_for_failed_ports {
                             return Err(RunConfigError::MidiDeviceNotFound(
-                                port_config.device_id.name.clone(),
+                                port_config.device_id.clone(),
                             ));
                         }
                         client_midi_in_connected_to.push(None);
@@ -326,7 +326,7 @@ pub fn run<P: ProcessHandler>(
                     if !system_midi_out_ports.contains(&port_config.device_id.name) {
                         if !options.empty_buffers_for_failed_ports {
                             return Err(RunConfigError::MidiDeviceNotFound(
-                                port_config.device_id.name.clone(),
+                                port_config.device_id.clone(),
                             ));
                         }
                         client_midi_out_connected_to.push(None);
@@ -390,6 +390,9 @@ pub fn run<P: ProcessHandler>(
         None
     };
 
+    let num_in_channels = audio_in_ports_info.len() as u32;
+    let num_out_channels = audio_out_ports_info.len() as u32;
+
     let stream_info = StreamInfo {
         audio_backend: Backend::Jack,
         audio_backend_version: None,
@@ -397,6 +400,10 @@ pub fn run<P: ProcessHandler>(
             in_ports: audio_in_ports_info,
             out_ports: audio_out_ports_info,
         },
+        num_in_channels,
+        num_out_channels,
+        in_channel_layout: ChannelLayout::Unspecified,
+        out_channel_layout: ChannelLayout::Unspecified,
         sample_rate,
         buffer_size: AudioBufferStreamInfo::FixedSized(client.buffer_size() as u32),
         estimated_latency: None,
@@ -491,7 +498,10 @@ pub fn run<P: ProcessHandler>(
                             e
                         );
                         if !options.empty_buffers_for_failed_ports {
-                            return Err(RunConfigError::MidiDeviceNotFound(system_in_port.clone()));
+                            return Err(RunConfigError::MidiDeviceNotFound(DeviceID {
+                                name: system_in_port.clone(),
+                                identifier: None,
+                            }));
                         }
                     }
                 }
@@ -512,9 +522,10 @@ pub fn run<P: ProcessHandler>(
                             e
                         );
                         if !options.empty_buffers_for_failed_ports {
-                            return Err(RunConfigError::MidiDeviceNotFound(
-                                system_out_port.clone(),
-                            ));
+                            return Err(RunConfigError::MidiDeviceNotFound(DeviceID {
+                                name: system_out_port.clone(),
+                                identifier: None,
+                            }));
                         }
                     }
                 }
@@ -577,6 +588,6 @@ impl<P: ProcessHandler> PlatformStreamHandle<P> for JackStreamHandle<P> {
 
 impl From<jack::Error> for RunConfigError {
     fn from(e: jack::Error) -> Self {
-        RunConfigError::PlatformSpecific(Box::new(e))
+        RunConfigError::PlatformSpecific(format!("{}", e))
     }
 }

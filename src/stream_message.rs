@@ -1,7 +1,7 @@
 use crate::{error::StreamError, DeviceID};
 
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// A message sent from the audio thread.
 pub enum StreamMsg {
     /// An audio device was unplugged while the stream was running. Any connected

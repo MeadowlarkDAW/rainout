@@ -1,16 +1,17 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::Backend;
+use crate::{Backend, DeviceID};
 
 #[cfg(feature = "midi")]
 use crate::MAX_MIDI_MSG_SIZE;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// An error that caused the stream to stop.
 pub enum StreamError {
     AudioServerShutdown { msg: Option<String> },
     AudioServerChangedSamplerate(u32),
+    PlatformSpecific(String),
     // TODO
 }
 impl Error for StreamError {}
@@ -27,20 +28,26 @@ impl fmt::Display for StreamError {
             StreamError::AudioServerChangedSamplerate(sr) => {
                 write!(f, "Fatal stream error: the audio server changed its sample rate to: {}", sr)
             }
+            StreamError::PlatformSpecific(e) => {
+                write!(f, "Fatal stream error: {}", e)
+            }
         }
     }
 }
 
 #[derive(Debug)]
 pub enum RunConfigError {
+    MalformedConfig(String),
+
     AudioBackendNotFound(Backend),
     AudioBackendNotInstalled(Backend),
     AudioBackendNotRunning(Backend),
-    AudioDeviceNotFound(String),
+    AudioDeviceNotFound(DeviceID),
     CouldNotUseSampleRate(u32),
     CouldNotUseBlockSize(u32),
     ConfigHasNoStereoOutput,
     AutoNoStereoOutputFound,
+    CouldNotUseExclusive,
 
     #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
     JackAudioPortNotFound(String),
@@ -50,14 +57,18 @@ pub enum RunConfigError {
     #[cfg(feature = "midi")]
     MidiBackendNotFound(Backend),
     #[cfg(feature = "midi")]
-    MidiDeviceNotFound(String),
+    MidiDeviceNotFound(DeviceID),
 
-    PlatformSpecific(Box<dyn Error>),
+    PlatformSpecific(String),
+    TimedOut,
 }
 impl Error for RunConfigError {}
 impl fmt::Display for RunConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            RunConfigError::MalformedConfig(msg) => {
+                write!(f, "Failed to run config: Malformed config: {}", msg)
+            }
             RunConfigError::AudioBackendNotFound(b) => {
                 write!(f, "Failed to run config: The audio backend {:?} was not found", b)
             }
@@ -76,7 +87,7 @@ impl fmt::Display for RunConfigError {
                 )
             }
             RunConfigError::AudioDeviceNotFound(a) => {
-                write!(f, "Failed to run config: The audio device {} was not found", a)
+                write!(f, "Failed to run config: The audio device {:?} was not found", a)
             }
             RunConfigError::CouldNotUseSampleRate(s) => {
                 write!(f, "Failed to run config: Could not use the sample rate {}", s)
@@ -89,6 +100,10 @@ impl fmt::Display for RunConfigError {
             }
             RunConfigError::AutoNoStereoOutputFound => {
                 write!(f, "Failed to run config: Could not find an audio device with at-least 2 output ports")
+            }
+
+            RunConfigError::CouldNotUseExclusive => {
+                write!(f, "Failed to run config: Could not run audio device in exclusive mode")
             }
 
             #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
@@ -106,10 +121,13 @@ impl fmt::Display for RunConfigError {
             }
             #[cfg(feature = "midi")]
             RunConfigError::MidiDeviceNotFound(m) => {
-                write!(f, "Failed to run config: The midi device {} was not found", m)
+                write!(f, "Failed to run config: The midi device {:?} was not found", m)
             }
             RunConfigError::PlatformSpecific(e) => {
                 write!(f, "Failed to run config: {}", e)
+            }
+            RunConfigError::TimedOut => {
+                write!(f, "Failed to run config: Timed out while attempting to spawn audio stream")
             }
         }
     }

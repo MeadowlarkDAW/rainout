@@ -1,12 +1,5 @@
 use crate::Backend;
 
-#[cfg(all(target_os = "linux", feature = "jack-linux"))]
-use crate::jack_backend;
-#[cfg(all(target_os = "macos", feature = "jack-macos"))]
-use crate::jack_backend;
-#[cfg(all(target_os = "windows", feature = "jack-windows"))]
-use crate::jack_backend;
-
 /// Returns the list available audio backends for this platform.
 ///
 /// These are ordered with the first item (index 0) being the most highly
@@ -17,6 +10,8 @@ pub fn available_audio_backends() -> &'static [Backend] {
         Backend::Jack,
         #[cfg(all(target_os = "macos", feature = "jack-macos"))]
         Backend::Jack,
+        #[cfg(target_os = "windows")]
+        Backend::Wasapi,
         #[cfg(all(target_os = "windows", feature = "jack-windows"))]
         Backend::Jack,
     ]
@@ -46,7 +41,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
     match backend {
         Backend::Jack => {
             #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            return Ok(jack_backend::enumerate_audio_backend());
+            return Ok(crate::jack_backend::enumerate_audio_backend());
             #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
             {
                 log::error!("The feature \"jack-linux\" is not enabled");
@@ -54,7 +49,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
             }
 
             #[cfg(all(target_os = "macos", feature = "jack-macos"))]
-            return Ok(jack_backend::enumerate_audio_backend());
+            return Ok(crate::jack_backend::enumerate_audio_backend());
             #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
             {
                 log::error!("The feature \"jack-macos\" is not enabled");
@@ -62,10 +57,20 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
             }
 
             #[cfg(all(target_os = "windows", feature = "jack-windows"))]
-            return Ok(jack_backend::enumerate_audio_backend());
+            return Ok(crate::jack_backend::enumerate_audio_backend());
             #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
             {
                 log::error!("The feature \"jack-windows\" is not enabled");
+                return Err(());
+            }
+        }
+        Backend::Wasapi => {
+            #[cfg(target_os = "windows")]
+            return Ok(crate::wasapi_backend::enumerate_audio_backend());
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                log::error!("WASAPI is not supported on this platform");
                 return Err(());
             }
         }
@@ -104,6 +109,16 @@ pub fn enumerate_audio_device(
 
             Err(())
         }
+        Backend::Wasapi => {
+            #[cfg(target_os = "windows")]
+            return crate::wasapi_backend::enumerate_audio_device(device);
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                log::error!("WASAPI is not supported on this platform");
+                return Err(());
+            }
+        }
         b => {
             log::error!("Unkown audio backend: {:?}", b);
             Err(())
@@ -120,7 +135,7 @@ pub fn enumerate_audio_device(
 pub fn enumerate_jack_audio_device(
 ) -> Result<JackAudioDeviceOptions, crate::error::JackEnumerationError> {
     #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-    return jack_backend::enumerate_audio_device();
+    return crate::jack_backend::enumerate_audio_device();
     #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
     {
         log::error!("The feature \"jack-linux\" is not enabled");
@@ -128,7 +143,7 @@ pub fn enumerate_jack_audio_device(
     }
 
     #[cfg(all(target_os = "macos", feature = "jack-macos"))]
-    return jack_backend::enumerate_audio_device();
+    return crate::jack_backend::enumerate_audio_device();
     #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
     {
         log::error!("The feature \"jack-macos\" is not enabled");
@@ -136,7 +151,7 @@ pub fn enumerate_jack_audio_device(
     }
 
     #[cfg(all(target_os = "windows", feature = "jack-windows"))]
-    return jack_backend::enumerate_audio_device();
+    return crate::jack_backend::enumerate_audio_device();
     #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
     {
         log::error!("The feature \"jack-windows\" is not enabled");
@@ -162,7 +177,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
     match backend {
         Backend::Jack => {
             #[cfg(all(target_os = "linux", feature = "jack-linux"))]
-            return Ok(jack_backend::enumerate_midi_backend());
+            return Ok(crate::jack_backend::enumerate_midi_backend());
             #[cfg(all(target_os = "linux", not(feature = "jack-linux")))]
             {
                 log::error!("The feature \"jack-linux\" is not enabled");
@@ -170,7 +185,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
             }
 
             #[cfg(all(target_os = "macos", feature = "jack-macos"))]
-            return Ok(jack_backend::enumerate_midi_backend());
+            return Ok(crate::jack_backend::enumerate_midi_backend());
             #[cfg(all(target_os = "macos", not(feature = "jack-macos")))]
             {
                 log::error!("The feature \"jack-macos\" is not enabled");
@@ -178,7 +193,7 @@ pub fn enumerate_midi_backend(backend: Backend) -> Result<MidiBackendOptions, ()
             }
 
             #[cfg(all(target_os = "windows", feature = "jack-windows"))]
-            return Ok(jack_backend::enumerate_midi_backend());
+            return Ok(crate::jack_backend::enumerate_midi_backend());
             #[cfg(all(target_os = "windows", not(feature = "jack-windows")))]
             {
                 log::error!("The feature \"jack-windows\" is not enabled");
@@ -207,6 +222,9 @@ pub enum BackendStatus {
     /// The backend is installed but it is not currently running on the system,
     /// and thus cannot be used until it is started
     NotRunning,
+
+    /// There was an error with this backend and it cannot be used.
+    Error,
 }
 
 #[derive(Debug, Clone)]
@@ -261,7 +279,7 @@ pub enum AudioDeviceOptions {
 }
 
 #[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 /// The name/ID of a device
 pub struct DeviceID {
     /// The name of the device
@@ -273,7 +291,7 @@ pub struct DeviceID {
 }
 
 #[cfg(not(feature = "serde-config"))]
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Hash)]
 /// The name/ID of a device
 pub struct DeviceID {
     /// The name of the device
@@ -282,6 +300,20 @@ pub struct DeviceID {
     /// The unique identifier of this device (if one is available). This
     /// is usually more reliable than just the name of the device.
     pub identifier: Option<String>,
+}
+
+impl PartialEq for DeviceID {
+    fn eq(&self, other: &Self) -> bool {
+        // If both have IDs, compare those.
+        if let Some(id_1) = &self.identifier {
+            if let Some(id_2) = &other.identifier {
+                return id_1 == id_2;
+            }
+        }
+
+        // If not, then compare the names instead.
+        &self.name == &other.name
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -315,6 +347,26 @@ pub struct AudioDeviceConfigOptions {
     /// This is only relevant for WASAPI on Windows. This will always be
     /// `false` on other backends and platforms.
     pub can_take_exclusive_access: bool,
+
+    /// If this is `true`, then it means that the audio device is active,
+    /// but there is no mic plugged into the device's hardware jack. This can
+    /// be used to show a warning to the user that they need to plug something
+    /// into that jack.
+    ///
+    /// This will always be `false` for devices that don't have inputs or
+    /// which don't have the feature to detect when its jacks are
+    /// populated.
+    pub in_jack_is_unpopulated: bool,
+
+    /// If this is `true`, then it means that the audio device is active,
+    /// but there is no speaker/headphones plugged into the device's hardware
+    /// jack. This can be used to show a warning to the user that they need to
+    /// plug something into that jack.
+    ///
+    /// This will always be `false` for devices that don't have outputs or
+    /// which don't have the feature to detect when its jacks are
+    /// populated.
+    pub out_jack_is_unpopulated: bool,
 }
 
 #[non_exhaustive]

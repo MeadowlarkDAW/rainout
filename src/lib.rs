@@ -5,6 +5,9 @@ pub(crate) mod jack_backend;
 #[cfg(all(target_os = "windows", feature = "jack-windows"))]
 pub(crate) mod jack_backend;
 
+#[cfg(target_os = "windows")]
+pub(crate) mod wasapi_backend;
+
 #[cfg(feature = "serde-config")]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 /// The list of backends supported by rainout
@@ -38,6 +41,17 @@ impl Backend {
             Backend::CoreAudio => "CoreAudio",
             Backend::Wasapi => "WASAPI",
             Backend::Asio => "ASIO",
+        }
+    }
+
+    pub fn supports_audio_inputs(&self) -> bool {
+        match self {
+            Backend::Jack => true,
+            Backend::Pipewire => true,
+            Backend::Alsa => true,
+            Backend::CoreAudio => true,
+            Backend::Wasapi => false,
+            Backend::Asio => true,
         }
     }
 }
