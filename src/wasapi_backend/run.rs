@@ -399,6 +399,8 @@ impl<P: ProcessHandler> AudioThread<P> {
                     [frames_written * block_align..(frames_written + frames) * block_align];
 
                 // Fill each slice into the device's output buffer
+                //
+                // TODO: This could be potentially optimized with unsafe bounds check eliding.
                 match sample_type {
                     wasapi::SampleType::Float => {
                         if vbps == 32 {
@@ -417,18 +419,6 @@ impl<P: ProcessHandler> AudioThread<P> {
                     }
                     wasapi::SampleType::Int => {
                         // TODO: Convert from float to int
-                    }
-                }
-
-                for (frame_i, out_frame) in
-                    device_buffer_part.chunks_exact_mut(block_align).enumerate()
-                {
-                    for (ch_i, out_smp_bytes) in
-                        out_frame.chunks_exact_mut(channel_align).enumerate()
-                    {
-                        let smp_bytes = proc_owned_buffers[ch_i][frame_i].to_le_bytes();
-
-                        out_smp_bytes[0..smp_bytes.len()].copy_from_slice(&smp_bytes);
                     }
                 }
 
