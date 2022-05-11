@@ -22,18 +22,16 @@ Why not just fork `CPAL`?
 
 # Goals
 - Support for Linux, Mac, and Windows using the following backends: (and maybe Android and iOS in the future, but that is not a gaurantee)
+    - [x] Jack (all OS's)
     - Linux
-        - [ ] Jack
         - [ ] Pipewire
         - [ ] Alsa (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
         - [ ] Pulseaudio (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
     - Mac
         - [ ] CoreAudio
-        - [ ] Jack (Maybe, if it is stable enough on Mac.)
     - Window
         - [ ] WASAPI
         - [ ] ASIO (reluctantly)
-        - [ ] Jack (Maybe, if it is stable enough on Windows.)
 - Scan the available devices on the system, and present configuration options in a format that is intuitive to an end-user configuring devices inside a settings GUI.
 - Send all audio and midi streams into a single high-priority thread, taking advantage of native duplex devices when available. (Audio buffers will be presented as de-interlaced `f32` buffers).
 - Robust and graceful error handling, especially while the stream is running.
