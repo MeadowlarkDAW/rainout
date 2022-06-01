@@ -711,7 +711,7 @@ pub enum StreamMsg {
 In addition to the main API, we will also have a full-working demo application with a working settings GUI. This will probably be written in `egui`, but another UI toolkit could be used.
 
 # Example Settings GUI Logic
-
+```
 Audio Settings TAB:
 
 <DROPDOWN> - Select audio backend (JACK, ASIO, WINAPI, COREAUDIO, etc) {
@@ -850,3 +850,4 @@ MIDI Settings TAB:
         }
     }
 }
+```
