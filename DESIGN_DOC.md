@@ -709,3 +709,144 @@ pub enum StreamMsg {
 # Demo Application
 
 In addition to the main API, we will also have a full-working demo application with a working settings GUI. This will probably be written in `egui`, but another UI toolkit could be used.
+
+# Example Settings GUI Logic
+
+Audio Settings TAB:
+
+<DROPDOWN> - Select audio backend (JACK, ASIO, WINAPI, COREAUDIO, etc) {
+    (if the backend is not installed (only relevant for JACK and Pipewire)) {
+        <TEXT> - "Backend not installed"
+    } (else if the backend is not running (only relevant for JACK)) {
+        <BUTTON> - "Activate backend"
+    } (else) {
+        (if backend has version info) {
+            <TEXT> - "Version: {}"
+        }
+
+        (if backend is JACK) {
+            <TEXT> - "Sample rate: {}"
+            <TEXT> - "Block size: {}"
+
+            <PANEL> - Input ports {
+                <BUTTON> - "Add port"
+                <LIST> {
+                    <DROPDOWN> - port name
+                    <BUTTON> - remove port
+                }
+            }
+            <PANEL> - Output ports {
+                <BUTTON> - "Add port"
+                <LIST> {
+                    <DROPDOWN> - port name
+                    <BUTTON> - remove port
+                }
+            }
+            <BUTTON> - "Reset to default ports"
+        } (else) {
+            (if backend is ASIO) {
+                <DROPDOWN> - Select a single audio device {
+                    <BUTTON> - "Open ASIO settings window"
+
+                    <TEXT> - "Sample rate: {}"
+                    <TEXT> - "Block size: {}"
+                } (else if no device available) {
+                    <TEXT> - "No audio devices detected"
+                } (else if no device selected) {
+                    <TEXT> - "Please select and audio device from the list"
+                }
+            } (else if backend supports linking a separate input and output device together) {
+                <DROPDOWN> - Select input audio device
+                <DROPDOWN> - Select output audio device
+
+                (if one or both devices selected) {
+                    <NUMBER SELECTOR> - "Block size" (this will have a minumum and maximum value)
+                    <BUTTON> - Reset to default block size
+
+                    <DROPDOWN> - Sample rate
+                    <BUTTON> - Reset to default sample rate
+                } (else if no device available) {
+                    <TEXT> - "No audio devices detected"
+                } (else if no device selected) {
+                    <TEXT> - "Please select and audio device from the list"
+                }
+            } (else) {
+                <DROPDOWN> - Select a single audio device {
+                    <NUMBER SELECTOR> - "Block size" (this will have a minumum and maximum value)
+                    <BUTTON> - Reset to efault block size
+
+                    <DROPDOWN> - Sample rate
+                    <BUTTON> - Reset to default sample rate
+
+                    (if backend is WASAPI) {
+                        <Checkbox> - "Take exclusive access"
+                    }
+                } (else if no device available) {
+                    <TEXT> - "No audio devices detected"
+                } (else if no device selected) {
+                    <TEXT> - "Please select and audio device from the list"
+                }
+            }
+
+            <PANEL> - Input busses {
+                <BUTTON> - "Add bus"
+                <LIST> {
+                    <LIST> {
+                        <A checkbox for each input port>
+                    }
+                    <BUTTON> - remove bus
+                }
+            }
+
+            <PANEL> - Output busses {
+                <BUTTON> - "Add bus"
+                <LIST> {
+                    <LIST> {
+                        <A checkbox for each input port>
+                    }
+                    <BUTTON> - remove bus
+                }
+            }
+        }
+    }
+}
+
+MIDI Settings TAB:
+
+<DROPDOWN> - Select MIDI backend (JACK, ASIO, WINAPI, COREAUDIO, etc) {
+    (if the backend is not installed (only relevant for JACK and Pipewire)) {
+        <TEXT> - "Backend not installed"
+    } (else if the backend is not running (only relevant for JACK)) {
+        <BUTTON> - "Activate backend"
+    } (else) {
+        (if backend has version info) {
+            <TEXT> - "Version: {}"
+        }
+
+        <PANEL> - Input ports {
+            <BUTTON> - "Add input"
+            <LIST> {
+                <DROPDOWN> - port name
+                <CHECKBOX> - "Follow selection"
+                (if port supports MIDI2) {
+                    <CHECKBOX> - "Use MIDI2"
+                }
+                <BUTTON> - remove port
+            }
+
+            <BUTTON> - "Reset to default"
+        }
+        <PANEL> - Output ports {
+            <BUTTON> - "Add output"
+            <LIST> {
+                <DROPDOWN> - port name
+                (if port supports MIDI2) {
+                    <CHECKBOX> - "Use MIDI2"
+                }
+                <BUTTON> - remove port
+            }
+
+            <BUTTON> - "Reset to default"
+        }
+    }
+}
