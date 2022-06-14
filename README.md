@@ -1,7 +1,7 @@
 # ☔ rainout ☔ (Rust Audio IN-OUT)
 [![Documentation](https://docs.rs/rainout/badge.svg)](https://docs.rs/rainout)
 [![Crates.io](https://img.shields.io/crates/v/rainout.svg)](https://crates.io/crates/rainout)
-[![License](https://img.shields.io/crates/l/rainout.svg)](https://github.com/RustyDAW/rainout/blob/main/COPYRIGHT)
+[![License](https://img.shields.io/crates/l/rainout.svg)](https://github.com/MeadowlarkDAW/rainout/blob/main/COPYRIGHT)
 
 **work in progress**
 

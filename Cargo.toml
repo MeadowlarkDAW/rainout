@@ -8,7 +8,7 @@ keywords = ["audio", "midi", "device", "hardware"]
 categories = ["multimedia::audio"]
 description = "Cross-platform audio and MIDI IO (placeholder)"
 documentation = "https://docs.rs/rainout"
-repository = "https://github.com/RustyDAW/rainout"
+repository = "https://github.com/MeadowlarkDAW/rainout"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
