@@ -179,6 +179,9 @@ pub enum AudioDeviceOptions {
     },
 
     /// A single input and output device pair can be selected from this list.
+    ///
+    /// This will only be used by backends that support tying together multiple
+    /// audio devices into a single duplex stream (CoreAudio and Pipewire).
     LinkedInOutDevice {
         /// The names/IDs of the available input devices to select from
         in_devices: Vec<DeviceID>,
