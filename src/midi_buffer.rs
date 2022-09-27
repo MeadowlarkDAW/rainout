@@ -63,46 +63,41 @@ impl Default for RawMidi {
 #[derive(Debug)]
 pub struct MidiBuffer {
     events: Vec<RawMidi>,
-    len: usize,
     max_len: usize,
 }
 
 impl MidiBuffer {
     pub(crate) fn new(buffer_size: usize) -> Self {
-        Self { events: Vec::with_capacity(buffer_size), len: 0, max_len: buffer_size }
+        Self { events: Vec::with_capacity(buffer_size), max_len: buffer_size }
     }
 
     pub fn events(&self) -> &[RawMidi] {
-        &self.events[0..self.len]
+        &self.events
     }
 
     pub fn clear(&mut self) {
-        self.len = 0
+        self.events.clear()
     }
 
     pub fn push(&mut self, event: RawMidi) -> Result<(), MidiBufferPushError> {
-        if self.len >= self.max_len {
+        if self.len() >= self.max_len {
             return Err(MidiBufferPushError::BufferFull);
         }
 
-        self.events[self.len] = event;
-
-        self.len += 1;
+        self.events.push(event);
 
         Ok(())
     }
 
     pub fn extend_from_slice(&mut self, events: &[RawMidi]) -> Result<(), MidiBufferPushError> {
-        if self.len >= self.max_len {
+        if self.len() >= self.max_len {
             return Err(MidiBufferPushError::BufferFull);
         }
 
-        let total_len = self.len + events.len();
+        let total_len = self.len() + events.len();
         let len = total_len.min(self.max_len);
 
-        self.events[self.len..len].copy_from_slice(&events[0..len - self.len]);
-
-        self.len = len;
+        self.events.extend_from_slice(&events[0..len - self.len()]);
 
         if total_len > len {
             Err(MidiBufferPushError::BufferFull)
@@ -112,15 +107,13 @@ impl MidiBuffer {
     }
 
     pub fn push_raw(&mut self, delta_frames: u32, data: &[u8]) -> Result<(), MidiBufferPushError> {
-        if self.len >= self.max_len {
+        if self.len() >= self.max_len {
             return Err(MidiBufferPushError::BufferFull);
         }
 
         match RawMidi::new(delta_frames, data) {
             Ok(event) => {
-                self.events[self.len] = event;
-
-                self.len += 1;
+                self.events.push(event);
 
                 Ok(())
             }
@@ -130,13 +123,18 @@ impl MidiBuffer {
 
     /// Replaces the contents of this buffer with the contents of the given buffer.
     pub fn clear_and_copy_from(&mut self, buffer: &MidiBuffer) {
-        self.len = buffer.len;
-        self.events[0..buffer.len].copy_from_slice(&buffer.events[0..buffer.len]);
+        self.clear();
+        self.extend_from_slice(&buffer.events[0..buffer.len()]).unwrap(); // TODO: Fix this unwrap?
     }
 
     /// The number of events currently in this buffer.
     pub fn len(&self) -> usize {
-        self.len
+        self.events.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
     }
 
     /// The maximum number of events that can be stored in this buffer.
