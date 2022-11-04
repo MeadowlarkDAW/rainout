@@ -22,14 +22,16 @@ Why not just fork `CPAL`?
 
 # Goals
 - Support for Linux, Mac, and Windows using the following backends: (and maybe Android and iOS in the future, but that is not a gaurantee)
-    - [x] Jack (all OS's)
     - Linux
+        - [x] Jack
         - [ ] Pipewire
         - [ ] Alsa (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
         - [ ] Pulseaudio (Maybe, depending on how difficult this is. This could be unecessary if Pipewire turns out to be good enough.)
     - Mac
+        - [x] Jack
         - [ ] CoreAudio
-    - Window
+    - Windows
+        - [x] Jack
         - [ ] WASAPI
         - [ ] ASIO (reluctantly)
 - Scan the available devices on the system, and present configuration options in a format that is intuitive to an end-user configuring devices inside a settings GUI.
