@@ -16,7 +16,7 @@ use crate::{
 use crate::{
     AudioBufferStreamInfo, AudioDeviceConfig, AudioDeviceStreamInfo, AutoOption, Backend,
     BlockSizeRange, ChannelLayout, DeviceID, PlatformStreamHandle, ProcessHandler, RainoutConfig,
-    RunOptions, StreamHandle, StreamInfo, StreamMsg,
+    RainoutDirection, RunOptions, StreamHandle, StreamInfo, StreamMsg,
 };
 
 #[cfg(feature = "midi")]
@@ -94,7 +94,9 @@ fn spawn_stream<P: ProcessHandler>(
             }
         },
         AudioDeviceConfig::Single(device_id) => {
-            if let Some((id, device, _jack_unpopulated)) = super::find_device(device_id) {
+            if let Some((id, device, _jack_unpopulated)) =
+                super::find_device(device_id, &config.direction)
+            {
                 (id, device)
             } else {
                 return Err(RunConfigError::AudioDeviceNotFound(device_id.clone()));
@@ -126,8 +128,10 @@ fn spawn_stream<P: ProcessHandler>(
     let channel_layout = ChannelLayout::Unspecified;
 
     // Check that the device has at-least two output channels.
-    if default_num_channels < 2 && options.must_have_stereo_output {
-        return Err(RunConfigError::AutoNoStereoOutputFound);
+    if config.direction == RainoutDirection::Render {
+        if default_num_channels < 2 && options.must_have_stereo_output {
+            return Err(RunConfigError::AutoNoStereoOutputFound);
+        }
     }
 
     // Check if this device supports running in exclusive mode.
@@ -242,17 +246,22 @@ fn spawn_stream<P: ProcessHandler>(
 
     // TODO: MIDI stuff
 
-    audio_client.initialize_client(
-        &desired_format,
-        period,
-        &wasapi::Direction::Render,
-        &share_mode,
-        false,
-    )?;
+    let direction = match config.direction {
+        crate::RainoutDirection::Render => wasapi::Direction::Render,
+        crate::RainoutDirection::Capture => wasapi::Direction::Capture,
+    };
+    audio_client.initialize_client(&desired_format, period, &direction, &share_mode, false)?;
 
     let h_event = audio_client.set_get_eventhandle()?;
 
-    let render_client = audio_client.get_audiorenderclient()?;
+    let render_client = match direction {
+        wasapi::Direction::Render => Some(audio_client.get_audiorenderclient()?),
+        wasapi::Direction::Capture => None,
+    };
+    let capture_client = match direction {
+        wasapi::Direction::Render => None,
+        wasapi::Direction::Capture => Some(audio_client.get_audiocaptureclient()?),
+    };
 
     audio_client.start_stream()?;
 
@@ -291,6 +300,7 @@ fn spawn_stream<P: ProcessHandler>(
             audio_client,
             h_event,
             render_client,
+            capture_client,
             block_align: block_align as usize,
             vbps,
             sample_type,
@@ -306,7 +316,8 @@ struct AudioThread<P: ProcessHandler> {
     stream_dropped: Arc<AtomicBool>,
     audio_client: wasapi::AudioClient,
     h_event: wasapi::Handle,
-    render_client: wasapi::AudioRenderClient,
+    render_client: Option<wasapi::AudioRenderClient>,
+    capture_client: Option<wasapi::AudioCaptureClient>,
     block_align: usize,
     vbps: u16,
     sample_type: wasapi::SampleType,
@@ -323,6 +334,7 @@ impl<P: ProcessHandler> AudioThread<P> {
             audio_client,
             h_event,
             render_client,
+            capture_client,
             block_align,
             vbps,
             sample_type,
@@ -338,6 +350,12 @@ impl<P: ProcessHandler> AudioThread<P> {
 
         // The owned buffers whose slices get sent to the process method in chunks.
         let mut proc_owned_buffers: Vec<Vec<f32>> =
+        (0..channels).map(|_| vec![0.0; max_frames as usize]).collect();
+        
+        // The buffer that is received from WASAPI. Pre-allocate a reasonably large size.
+        let mut device_read_buffer = vec![0u8; PREALLOC_FRAMES * block_align];
+        // The owned buffers whose slices get sent to the process method in chunks.
+        let mut proc_owned_read_buffers: Vec<Vec<f32>> =
             (0..channels).map(|_| vec![0.0; max_frames as usize]).collect();
 
         let channel_align = block_align / channels;
@@ -372,10 +390,63 @@ impl<P: ProcessHandler> AudioThread<P> {
                 device_buffer.resize(buffer_frame_count as usize * block_align, 0);
             }
 
+            // Read from the device, so we can pass this into the processer the audiothread can read
+            if let Some(ref capturer) = capture_client {
+                let result = capturer.read_from_device(block_align, &mut device_read_buffer);
+                match result {
+                    Ok((nbr_frames_returned, buf_flags)) => {
+                        // figure out error handling
+                        if buf_flags.data_discontinuity {
+                            log::error!("Data discontinuity when reading from device");
+                        }
+
+                        for b in proc_owned_read_buffers.iter_mut() {
+                            b.clear();
+                            b.resize(nbr_frames_returned as usize, 0.0);
+                        }
+                        if !buf_flags.silent {
+                            match sample_type {
+                                wasapi::SampleType::Float => {
+                                    if vbps == 32 {
+                                        for j in 0..nbr_frames_returned as usize {
+                                            for i in 0..channels {
+                                                let offset = (i + j * channels) * 4;
+                                                // I feel a bit iffy about this
+                                                let val_bytes: [u8; 4] = [
+                                                    device_read_buffer[offset],
+                                                    device_read_buffer[offset + 1],
+                                                    device_read_buffer[offset + 2],
+                                                    device_read_buffer[offset + 3],
+                                                ];
+                                                let val_float = f32::from_le_bytes(val_bytes);
+                                                // *val = val_float;
+                                                proc_owned_read_buffers[i][j] = val_float;
+                                            }
+                                        }
+                                    }
+                                }
+                                wasapi::SampleType::Int => {
+                                    // TODO: Convert from int to float
+
+                                }
+                            }
+                            
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Fatal WASAPI stream error while writing to device: {}", e);
+                        to_handle_tx
+                            .push(StreamMsg::Error(StreamError::PlatformSpecific(format!("{}", e))))
+                            .unwrap();
+                        break;
+                    }
+                }
+            }
+
             let mut frames_written = 0;
             while frames_written < buffer_frame_count {
                 let frames = (buffer_frame_count - frames_written).min(max_frames);
-
+                
                 // Clear and resize the buffer first. Since we never allow more than
                 // `max_frames`, this will never allocate.
                 for b in proc_owned_buffers.iter_mut() {
@@ -384,7 +455,7 @@ impl<P: ProcessHandler> AudioThread<P> {
                 }
 
                 process_handler.process(ProcessInfo {
-                    audio_inputs: &[],
+                    audio_inputs: proc_owned_read_buffers.as_slice(),
                     audio_outputs: proc_owned_buffers.as_mut_slice(),
                     frames,
                     silent_audio_inputs: &[],
@@ -426,17 +497,19 @@ impl<P: ProcessHandler> AudioThread<P> {
             }
 
             // Write the now filled output buffer to the device.
-            if let Err(e) = render_client.write_to_device(
-                buffer_frame_count as usize,
-                block_align,
-                &device_buffer[0..buffer_frame_count * block_align],
-                None,
-            ) {
-                log::error!("Fatal WASAPI stream error while writing to device: {}", e);
-                to_handle_tx
-                    .push(StreamMsg::Error(StreamError::PlatformSpecific(format!("{}", e))))
-                    .unwrap();
-                break;
+            if let Some(ref renderer) = render_client {
+                if let Err(e) = renderer.write_to_device(
+                    buffer_frame_count as usize,
+                    block_align,
+                    &device_buffer[0..buffer_frame_count * block_align],
+                    None,
+                ) {
+                    log::error!("Fatal WASAPI stream error while writing to device: {}", e);
+                    to_handle_tx
+                        .push(StreamMsg::Error(StreamError::PlatformSpecific(format!("{}", e))))
+                        .unwrap();
+                    break;
+                }
             }
 
             if let Err(e) = h_event.wait_for_event(1000) {
