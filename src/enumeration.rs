@@ -1,4 +1,4 @@
-use crate::Backend;
+use crate::{Backend, RainoutDirection};
 
 /// Returns the list available audio backends for this platform.
 ///
@@ -37,7 +37,10 @@ pub fn available_midi_backends() -> &'static [Backend] {
 ///
 /// This will return an error if the backend with the given name could
 /// not be found.
-pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, ()> {
+pub fn enumerate_audio_backend(
+    backend: Backend,
+    direction: &RainoutDirection,
+) -> Result<AudioBackendOptions, ()> {
     match backend {
         Backend::Jack => {
             #[cfg(all(target_os = "linux", feature = "jack-linux"))]
@@ -66,7 +69,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
         }
         Backend::Wasapi => {
             #[cfg(target_os = "windows")]
-            return Ok(crate::wasapi_backend::enumerate_audio_backend());
+            return Ok(crate::wasapi_backend::enumerate_audio_backend(direction));
 
             #[cfg(not(target_os = "windows"))]
             {
@@ -89,6 +92,7 @@ pub fn enumerate_audio_backend(backend: Backend) -> Result<AudioBackendOptions, 
 pub fn enumerate_audio_device(
     backend: Backend,
     device: &DeviceID,
+    direction: RainoutDirection,
 ) -> Result<AudioDeviceConfigOptions, ()> {
     match backend {
         Backend::Jack => {
@@ -111,7 +115,7 @@ pub fn enumerate_audio_device(
         }
         Backend::Wasapi => {
             #[cfg(target_os = "windows")]
-            return crate::wasapi_backend::enumerate_audio_device(device);
+            return crate::wasapi_backend::enumerate_audio_device(device, direction);
 
             #[cfg(not(target_os = "windows"))]
             {

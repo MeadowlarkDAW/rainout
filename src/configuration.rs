@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{Backend, DeviceID};
+use crate::{enumerate_audio_backend, AudioDeviceOptions, Backend, DeviceID};
 
 #[cfg(feature = "midi")]
 use crate::MidiControlScheme;
@@ -15,6 +15,12 @@ pub enum AutoOption<T: Debug + Clone + PartialEq> {
 
     /// Automatically select the best configuration.
     Auto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum RainoutDirection {
+    Render,
+    Capture,
 }
 
 #[cfg(not(feature = "serde-config"))]
@@ -51,6 +57,7 @@ pub struct RainoutConfig {
     /// audio device to use.
     pub audio_device: AudioDeviceConfig,
 
+    pub direction: RainoutDirection,
     /// The sample rate to use.
     ///
     /// Set this to `AutoOption::Auto` to automatically select the best
@@ -128,12 +135,34 @@ impl Default for RainoutConfig {
             audio_device: AudioDeviceConfig::Auto,
             sample_rate: AutoOption::Auto,
             block_size: AutoOption::Auto,
+            direction: RainoutDirection::Render,
 
             take_exclusive_access: false,
 
             #[cfg(feature = "midi")]
             midi_config: None,
         }
+    }
+}
+impl RainoutConfig {
+    pub fn new(device_name: &str, direction: crate::RainoutDirection) -> Result<Self, ()> {
+        let mut config = RainoutConfig { direction, ..Default::default() };
+        let backend_options = enumerate_audio_backend(Backend::Wasapi, &direction)?;
+        let devices = backend_options.device_options.unwrap();
+        // If it can't find the device, it will use Auto
+        match devices {
+            AudioDeviceOptions::SingleDeviceOnly { options } => {
+                for device in options {
+                    if device.name.contains(&device_name) {
+                        config.audio_device = AudioDeviceConfig::Single(device);
+                        break;
+                    }
+                }
+            }
+            _ => (),
+        };
+
+        Ok(config)
     }
 }
 
