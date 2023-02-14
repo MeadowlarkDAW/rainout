@@ -8,20 +8,8 @@ pub(crate) mod jack_backend;
 #[cfg(target_os = "windows")]
 pub(crate) mod wasapi_backend;
 
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-/// The list of backends supported by rainout
-pub enum Backend {
-    Jack,
-    Pipewire,
-    Alsa,
-    CoreAudio,
-    Wasapi,
-    Asio,
-}
-
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The list of backends supported by rainout
 pub enum Backend {
     Jack,
