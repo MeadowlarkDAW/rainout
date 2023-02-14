@@ -5,20 +5,8 @@ use crate::{Backend, DeviceID};
 #[cfg(feature = "midi")]
 use crate::MidiControlScheme;
 
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-/// Specifies whether to use a specific configuration or to automatically
-/// select the best configuration.
-pub enum AutoOption<T: Debug + Clone + PartialEq> {
-    /// Use this specific configuration.
-    Use(T),
-
-    /// Automatically select the best configuration.
-    Auto,
-}
-
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// Specifies whether to use a specific configuration or to automatically
 /// select the best configuration.
 pub enum AutoOption<T: Debug + Clone + PartialEq> {
@@ -35,52 +23,8 @@ impl<T: Debug + Clone + PartialEq> Default for AutoOption<T> {
     }
 }
 
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-/// The configuration of audio and MIDI backends and devices.
-pub struct RainoutConfig {
-    /// The audio backend to use.
-    ///
-    /// Set this to `AutoOption::Auto` to automatically select the best
-    /// backend to use.
-    pub audio_backend: AutoOption<Backend>,
-
-    /// The audio device/devices to use.
-    ///
-    /// Set this to `AudioDeviceConfig::Auto` to automatically select the best
-    /// audio device to use.
-    pub audio_device: AudioDeviceConfig,
-
-    /// The sample rate to use.
-    ///
-    /// Set this to `AutoOption::Auto` to automatically select the best
-    /// sample rate to use.
-    pub sample_rate: AutoOption<u32>,
-
-    /// The block/buffer size to use.
-    ///
-    /// Set this to `AutoOption::Auto` to automatically select the best
-    /// buffer/block size to use.
-    pub block_size: AutoOption<u32>,
-
-    /// If `true` then it means that the application can request to take
-    /// exclusive access of the device to improve latency.
-    ///
-    /// This is only relevant for WASAPI on Windows. This will always be
-    /// `false` on other backends and platforms.
-    ///
-    /// By default this is set to `false`.
-    pub take_exclusive_access: bool,
-
-    #[cfg(feature = "midi")]
-    /// The configuration of MIDI devices.
-    ///
-    /// Set this to `None` to use no MIDI devices.
-    pub midi_config: Option<MidiConfig>,
-}
-
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The configuration of audio and MIDI backends and devices.
 pub struct RainoutConfig {
     /// The audio backend to use.
@@ -137,52 +81,8 @@ impl Default for RainoutConfig {
     }
 }
 
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-/// The configuration of which audio device/devices to use.
-pub enum AudioDeviceConfig {
-    /// Use a single audio device. These device may be output only, input
-    /// only, or (most commonly) duplex.
-    Single(DeviceID),
-
-    /// Use an input/output device pair. This is only supported on some
-    /// backends.
-    LinkedInOut { input: Option<DeviceID>, output: Option<DeviceID> },
-
-    #[cfg(any(feature = "jack-linux", feature = "jack-macos", feature = "jack-windows"))]
-    /// When the audio backend is Jack, the names of the audio ports to use.
-    ///
-    /// This is only relevent when the audio backend is Jack.
-    Jack {
-        /// The names of the audio input ports to use.
-        ///
-        /// The buffers presented in `ProcInfo::audio_in` will appear in the
-        /// exact same order as this Vec.
-        ///
-        /// If a port with the given name does not exist, then an unconnected
-        /// virtual port with that same name will be created.
-        ///
-        /// You may also pass in an empty Vec to have no audio inputs.
-        in_ports: Vec<String>,
-
-        /// The names of the audio output ports to use.
-        ///
-        /// The buffers presented in `ProcInfo::audio_out` will appear in the
-        /// exact same order as this Vec.
-        ///
-        /// If a port with the given name does not exist, then an unconnected
-        /// virtual port with that same name will be created.
-        ///
-        /// You may also pass in an empty Vec to have no audio outputs.
-        out_ports: Vec<String>,
-    },
-
-    /// Automatically select the best configuration.
-    Auto,
-}
-
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The configuration of which audio device/devices to use.
 pub enum AudioDeviceConfig {
     /// Use a single audio device. These device may be output only, input
@@ -232,42 +132,8 @@ impl Default for AudioDeviceConfig {
 }
 
 #[cfg(feature = "midi")]
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-/// The configuration of the MIDI backend and devices.
-pub struct MidiConfig {
-    /// The MIDI backend to use.
-    ///
-    /// Set this to `AutoOption::Auto` to automatically select the best
-    /// backend to use.
-    pub midi_backend: AutoOption<Backend>,
-
-    /// The names of the MIDI input ports to use.
-    ///
-    /// The buffers presented in `ProcInfo::midi_in` will appear in the
-    /// exact same order as this Vec.
-    ///
-    /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of input ports to use.
-    ///
-    /// You may also pass in an empty Vec to have no MIDI inputs.
-    pub in_ports: AutoOption<Vec<MidiPortConfig>>,
-
-    /// The names of the MIDI output ports to use.
-    ///
-    /// The buffers presented in `ProcInfo::midi_out` will appear in the
-    /// exact same order as this Vec.
-    ///
-    /// Set this to `AutoOption::Auto` to automatically select the best
-    /// configuration of output ports to use.
-    ///
-    /// You may also pass in an empty Vec to have no MIDI outputs.
-    pub out_ports: AutoOption<Vec<MidiPortConfig>>,
-}
-
-#[cfg(feature = "midi")]
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The configuration of the MIDI backend and devices.
 pub struct MidiConfig {
     /// The MIDI backend to use.
@@ -310,23 +176,8 @@ impl Default for MidiConfig {
 }
 
 #[cfg(feature = "midi")]
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-/// The configuration of a MIDI device port
-pub struct MidiPortConfig {
-    /// The name/ID of the MIDI device to use
-    pub device_id: DeviceID,
-
-    /// The index of the port on the device
-    pub port_index: usize,
-
-    /// The control scheme to use for this port
-    pub control_scheme: MidiControlScheme,
-}
-
-#[cfg(feature = "midi")]
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The configuration of a MIDI device port
 pub struct MidiPortConfig {
     /// The name/ID of the MIDI device to use

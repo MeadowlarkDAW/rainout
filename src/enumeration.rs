@@ -281,20 +281,8 @@ pub enum AudioDeviceOptions {
     },
 }
 
-#[cfg(feature = "serde-config")]
-#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
-/// The name/ID of a device
-pub struct DeviceID {
-    /// The name of the device
-    pub name: String,
-
-    /// The unique identifier of this device (if one is available). This
-    /// is usually more reliable than just the name of the device.
-    pub identifier: Option<String>,
-}
-
-#[cfg(not(feature = "serde-config"))]
 #[derive(Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The name/ID of a device
 pub struct DeviceID {
     /// The name of the device
@@ -494,25 +482,9 @@ pub struct MidiPortOptions {
 }
 
 #[cfg(feature = "midi")]
-#[cfg(feature = "serde-config")]
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-/// The type of control scheme that this port supports
-pub enum MidiControlScheme {
-    /// Supports only MIDI version 1
-    Midi1,
-
-    #[cfg(feature = "midi2")]
-    /// Supports MIDI version 2 (and by proxy also supports MIDI version 1)
-    Midi2,
-    // TODO: Midi versions inbetween 1.0 and 2.0?
-    // TODO: OSC devices?
-}
-
-#[cfg(feature = "midi")]
-#[cfg(not(feature = "serde-config"))]
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
 /// The type of control scheme that this port supports
 pub enum MidiControlScheme {
     /// Supports only MIDI version 1
