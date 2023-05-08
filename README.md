@@ -3,6 +3,12 @@
 [![Crates.io](https://img.shields.io/crates/v/rainout.svg)](https://crates.io/crates/rainout)
 [![License](https://img.shields.io/crates/l/rainout.svg)](https://github.com/MeadowlarkDAW/rainout/blob/main/COPYRIGHT)
 
+### **This project has been abandoned. If anyone wants to take this over, please let me know!**
+
+If you want to connect to audio and MIDI devices in Rust, check out [cpal](https://crates.io/crates/cpal), [midi-control](https://crates.io/crates/midi-control), [tinyaudio](https://crates.io/crates/tinyaudio), and/or [miniaudio](https://crates.io/crates/om-fork-miniaudio) instead.
+
+---
+
 A cross-platform, highly configurable, low-latency, and robust solution for connecting to audio and MIDI devices.
 
 > This crate is experimental and a work in progress. It is not yet ready for any kind of production use.
