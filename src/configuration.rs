@@ -1,9 +1,16 @@
 use std::fmt::Debug;
 
-use crate::{Backend, DeviceID};
+use crate::{enumerate_audio_backend, AudioDeviceOptions, Backend, DeviceID};
 
 #[cfg(feature = "midi")]
 use crate::MidiControlScheme;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
+pub enum RainoutDirection {
+    Render,
+    Capture,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde-config", derive(serde::Serialize, serde::Deserialize))]
@@ -63,6 +70,9 @@ pub struct RainoutConfig {
     ///
     /// Set this to `None` to use no MIDI devices.
     pub midi_config: Option<MidiConfig>,
+
+    pub direction: RainoutDirection,
+
 }
 
 impl Default for RainoutConfig {
@@ -72,12 +82,34 @@ impl Default for RainoutConfig {
             audio_device: AudioDeviceConfig::Auto,
             sample_rate: AutoOption::Auto,
             block_size: AutoOption::Auto,
+            direction: RainoutDirection::Render,
 
             take_exclusive_access: false,
 
             #[cfg(feature = "midi")]
             midi_config: None,
         }
+    }
+}
+impl RainoutConfig {
+    pub fn new(device_name: &str, direction: crate::RainoutDirection) -> Result<Self, ()> {
+        let mut config = RainoutConfig { direction, ..Default::default() };
+        let backend_options = enumerate_audio_backend(Backend::Wasapi, &direction)?;
+        let devices = backend_options.device_options.unwrap();
+        // If it can't find the device, it will use Auto
+        match devices {
+            AudioDeviceOptions::SingleDeviceOnly { options } => {
+                for device in options {
+                    if device.name.contains(&device_name) {
+                        config.audio_device = AudioDeviceConfig::Single(device);
+                        break;
+                    }
+                }
+            }
+            _ => (),
+        };
+
+        Ok(config)
     }
 }
 

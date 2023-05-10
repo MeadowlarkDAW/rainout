@@ -18,7 +18,7 @@ bitflags! {
 
 use crate::{
     AudioBackendOptions, AudioDeviceConfigOptions, AudioDeviceOptions, Backend, BackendStatus,
-    BlockSizeRange, ChannelLayout, DeviceID,
+    BlockSizeRange, ChannelLayout, DeviceID, RainoutDirection,
 };
 
 pub(super) fn check_init() {
@@ -26,12 +26,15 @@ pub(super) fn check_init() {
     INIT.call_once(|| wasapi::initialize_mta().unwrap());
 }
 
-pub fn enumerate_audio_backend() -> AudioBackendOptions {
+pub fn enumerate_audio_backend(direction: &RainoutDirection) -> AudioBackendOptions {
     log::debug!("Enumerating WASAPI server...");
 
     check_init();
-
-    let coll = match DeviceCollection::new(&Direction::Render) {
+    let wasapi_direction = match direction {
+        RainoutDirection::Capture => Direction::Capture,
+        RainoutDirection::Render => Direction::Render,
+    };
+    let coll = match DeviceCollection::new(&wasapi_direction) {
         Ok(coll) => coll,
         Err(e) => {
             log::error!("Failed to get WASAPI device collection: {}", e);
@@ -142,12 +145,15 @@ pub fn enumerate_audio_backend() -> AudioBackendOptions {
     }
 }
 
-pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOptions, ()> {
+pub fn enumerate_audio_device(
+    device: &DeviceID,
+    direction: RainoutDirection,
+) -> Result<AudioDeviceConfigOptions, ()> {
     log::debug!("Enumerating WASAPI device {} ...", &device.name);
 
     check_init();
 
-    let (id, wdevice, jack_unpopulated) = match find_device(device) {
+    let (id, wdevice, jack_unpopulated) = match find_device(device, &direction) {
         Some((id, device, jack_unpopulated)) => (id, device, jack_unpopulated),
         None => return Err(()),
     };
@@ -273,10 +279,16 @@ pub fn enumerate_audio_device(device: &DeviceID) -> Result<AudioDeviceConfigOpti
     }
 }
 
-pub(super) fn find_device(device: &DeviceID) -> Option<(DeviceID, wasapi::Device, bool)> {
+pub(super) fn find_device(
+    device: &DeviceID,
+    direction: &RainoutDirection,
+) -> Option<(DeviceID, wasapi::Device, bool)> {
     log::debug!("Finding WASAPI device {} ...", &device.name);
-
-    let coll = match DeviceCollection::new(&Direction::Render) {
+    let wasapi_direction = match direction {
+        RainoutDirection::Capture => Direction::Capture,
+        RainoutDirection::Render => Direction::Render,
+    };
+    let coll = match DeviceCollection::new(&wasapi_direction) {
         Ok(coll) => coll,
         Err(e) => {
             log::error!("Failed to get WASAPI device collection: {}", e);
